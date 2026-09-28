@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@heyputer/puter.js": "^2.6.3",
     "@mstblockchain/mst-sdk": "^1.0.0",
     "@supabase/supabase-js": "^2.117.2",
     "class-variance-authority": "^0.7.1",
