@@ -37,9 +37,24 @@ stop button, copy, new chat, thread persisted to `localStorage`. No extra chat d
 Describe an image, get an image and a caption — both in the thread.
 
 - `lib/orbit/puter.ts` — injects the official CDN script (`https://js.puter.com/v2/`) on first use,
-  then calls `window.puter.ai.txt2img(prompt, { provider, model, ratio })`.
+  then calls `puter.ai.txt2img(prompt, { provider, model, ratio, test_mode })`.
 - **No API key and no server.** Puter is user-pays: the caller needs a signed-in Puter account,
-  and the cost lands on *their* account, not on MSTORA.
+  and the cost lands on *their* account, not on Echo.
+- **The page signs in explicitly.** Puter.js bills whatever account the browser page is on, and on a
+  first visit that is a throwaway guest session with no credits. Puter reports that as
+  `insufficient_funds` (HTTP 402) — so it looks like the user's account is empty even when their
+  dashboard shows hundreds left. The composer therefore shows who is signed in, with a
+  **Sign in with Puter** button and a **Sign out** button, and refuses to generate until the page is
+  on a real account. `signedInUser()` reports status without prompting; `signInPuter()` opens the
+  account picker (`request_auth`) and must run from a click.
+- **Test mode** (`puter_test`) returns a sample image and spends nothing. It is the only way to tell
+  "our wiring is broken" apart from "this account can't afford it" — if test mode renders an image
+  and real mode says `insufficient_funds`, the integration is fine and the account is the problem.
+- **Model IDs are volatile.** OpenAI retired `gpt-image-1`, `-1-mini` and `-1.5` (shutdown Dec 1,
+  2026); use `gpt-image-2` / `gpt-image-2.5-*`. All Together routes are excluded by Puter's data
+  policy and reject with `bad_request`. Cloudflare Schnell always renders 1024×1024 and ignores the
+  requested ratio, so the picker is hidden for it. Treat
+  <https://docs.puter.com/AI/txt2img/> as the source of truth, not the model list in code.
 - **Puter is not an npm dependency on purpose.** The `npm` package is the same source, but it
   resolves its own internal chunks at runtime, so bundling it with Turbopack fails with
   `Failed to load chunk .../node_modules_%40heyputer_kv_*.js`. That happens *before* any API call,

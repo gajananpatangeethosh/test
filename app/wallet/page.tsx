@@ -14,7 +14,7 @@ export default function WalletPage() {
   const rows = holdings.map((h) => ({ ...h, coin: coinById(h.coinId) }));
   if (!isConnected) return <AppShell><div className="py-20 text-center px-6">
     <h1 className="text-2xl font-bold">Connect your wallet</h1>
-    <p className="muted text-sm mt-2">Non-custodial sign-in via BridgeKey. No seed phrase ever touches MSTORA.</p>
+    <p className="muted text-sm mt-2">Non-custodial sign-in via BridgeKey. No seed phrase ever touches Echo.</p>
     <Button disabled={isConnecting} onClick={() => void connect()} className="mt-6">{isConnecting ? "Connecting…" : "Connect BridgeKey"}</Button></div></AppShell>;
   return <AppShell>
     <div className="py-4 px-3 sm:px-0 space-y-3">

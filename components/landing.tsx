@@ -9,6 +9,7 @@ import { coins, coinById } from "@/lib/data";
 import { fmtMst, fmtNum } from "@/lib/utils";
 import { Avatar, Badge } from "./ui";
 import { CoinChart } from "./chart";
+import { Wordmark } from "./wordmark";
 import { useWallet } from "./mst/wallet-provider";
 
 const ease = { duration: 0.7, ease: [0.21, 0.65, 0.35, 1] as const };
@@ -22,7 +23,7 @@ export function LandingNav() {
   const { isConnected, isConnecting, connect, error } = useWallet();
   return <header className="fixed top-0 inset-x-0 z-50 backdrop-blur-xl bg-[#08090b]/75 border-b border-white/[.06]">
     <div className="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center gap-8">
-      <Link href="/" className="font-bold text-lg tracking-tight">MST<span className="text-teal-300">ORA</span></Link>
+      <Link href="/" className="text-lg"><Wordmark /></Link>
       <nav className="hidden md:flex items-center gap-7 text-sm muted">
         <a href="#how" className="hover:text-white transition">How it works</a>
         <a href="#markets" className="hover:text-white transition">Markets</a>
@@ -143,7 +144,7 @@ export function HowItWorks() {
   return <section id="how" className="mx-auto max-w-6xl px-4 sm:px-6 py-20 sm:py-28 scroll-mt-16">
     <Reveal><p className="text-teal-300 text-sm font-medium">How it works</p>
       <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">Five steps. One loop.</h2>
-      <p className="muted mt-3 max-w-xl">MSTORA turns posting into an economy. Each step feeds the next — and every coin settles on MST Blockchain.</p></Reveal>
+      <p className="muted mt-3 max-w-xl">Echo turns posting into an economy. Each step feeds the next — and every coin settles on MST Blockchain.</p></Reveal>
     <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
       {STEPS.map((s, i) => <Reveal key={s.title} delay={i * 0.07}>
         <div className="card card-hover p-5 h-full">
@@ -196,7 +197,7 @@ export function OrbitTeaser() {
       <Reveal>
         <p className="text-teal-300 text-sm font-medium">Orbit</p>
         <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mt-2">An AI that speaks onchain.</h2>
-        <p className="muted mt-3 leading-relaxed">Orbit helps you price coins, draft posts, and read the market — right inside MSTORA. Ask it anything, or just talk.<br /><br />
+        <p className="muted mt-3 leading-relaxed">Orbit helps you price coins, draft posts, and read the market — right inside Echo. Ask it anything, or just talk.<br /><br />
           <Link href="/orbit" className="inline-flex items-center gap-1.5 rounded-full bg-white text-black text-sm font-medium px-5 py-2.5 hover:bg-teal-100 transition">Chat with Orbit<ArrowRight size={15} /></Link></p>
       </Reveal>
       <Reveal delay={0.12}>
@@ -217,8 +218,8 @@ export function OrbitTeaser() {
 
 export function WalletSection() {
   const items = [
-    { title: "BridgeKey, one tap", body: "Connect the non-custodial BridgeKey wallet. Keys never touch MSTORA — every signature happens in your wallet." },
-    { title: "Testnet, free to try", body: "MSTORA runs on MST Testnet. Grab free tMSTC from the faucet and trade with zero real money." },
+    { title: "BridgeKey, one tap", body: "Connect the non-custodial BridgeKey wallet. Keys never touch Echo — every signature happens in your wallet." },
+    { title: "Testnet, free to try", body: "Echo runs on MST Testnet. Grab free tMSTC from the faucet and trade with zero real money." },
     { title: "Everything verifiable", body: "Every transaction links straight to the MST explorer. No black boxes, no fake fills." },
   ];
   return <section id="wallet" className="border-t border-white/[.06] bg-white/[.015] scroll-mt-16">
@@ -246,7 +247,7 @@ export function FinalCta() {
   return <section className="mx-auto max-w-6xl px-4 sm:px-6 py-20 sm:py-28 text-center">
     <Reveal>
       <h2 className="text-3xl sm:text-5xl font-bold tracking-tight">Post it. Coin it.<br />Own it.</h2>
-      <p className="muted mt-4 max-w-md mx-auto">Join MSTORA on MST Testnet. Your first collect is one click away.</p>
+      <p className="muted mt-4 max-w-md mx-auto">Join Echo on MST Testnet. Your first collect is one click away.</p>
       <div className="mt-7 flex flex-wrap justify-center gap-3">
         <Link href="/home" className="inline-flex items-center gap-1.5 rounded-full bg-white text-black text-sm font-medium px-7 py-3 hover:bg-teal-100 transition">Launch app<ArrowRight size={15} /></Link>
         <Link href="/create" className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-7 py-3 text-sm hover:border-white/30 transition">Create first</Link>
@@ -259,7 +260,7 @@ export function LandingFooter() {
   return <footer className="border-t border-white/[.06]">
     <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 grid gap-10 sm:grid-cols-[1.4fr_1fr_1fr_1fr]">
       <div>
-        <div className="font-bold text-lg">MST<span className="text-teal-300">ORA</span></div>
+        <div className="text-lg"><Wordmark /></div>
         <p className="muted text-sm mt-2 max-w-xs leading-relaxed">A social network where posts become collectible coins on MST Blockchain.</p>
         <p className="text-xs mt-4 text-[#5b616b]">Testnet chain 91562037 · tMSTC has no monetary value.</p>
       </div>
@@ -284,7 +285,7 @@ export function LandingFooter() {
     </div>
     <div className="border-t border-white/[.06]">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-5 flex flex-col sm:flex-row gap-2 items-center justify-between text-xs text-[#5b616b]">
-        <span>© 2026 MSTORA. Built on MST Blockchain.</span>
+        <span>© 2026 Echo. Built on MST Blockchain.</span>
         <span>Non-custodial · Testnet preview</span>
       </div>
     </div>

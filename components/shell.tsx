@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { WalletButton } from "./mst/wallet-ui";
 import { useWallet } from "./mst/wallet-provider";
 import { SearchBar } from "./search";
+import { Wordmark } from "./wordmark";
 
 const nav = [
     { href: "/home", label: "Home", icon: Home },
@@ -20,7 +21,7 @@ const nav = [
 export function Sidebar() {
   const path = usePathname();
   return <aside className="hidden md:flex w-60 shrink-0 flex-col gap-1 p-4 sticky top-0 h-screen">
-    <Link href="/home" className="px-3 py-4 text-xl font-bold tracking-tight">MST<span className="text-teal-300">ORA</span></Link>
+    <Link href="/home" className="px-3 py-4 text-xl"><Wordmark /></Link>
     {nav.map((n) => <Link key={n.href + n.label} href={n.href}
       className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] transition hover:bg-white/5",
         (path === n.href || (n.href !== "/" && path.startsWith(n.href))) ? "bg-white/[.07] text-white font-medium" : "text-[#9aa0ab]")}>
@@ -31,7 +32,7 @@ export function Sidebar() {
 export function Topbar() {
   return <header className="sticky top-0 z-[60] backdrop-blur-xl bg-[#08090b]/80 border-b border-white/[.06]">
     <div className="mx-auto max-w-6xl flex items-center gap-3 px-4 h-14">
-      <Link href="/home" className="md:hidden font-bold text-lg">MST<span className="text-teal-300">ORA</span></Link>
+      <Link href="/home" className="md:hidden text-lg"><Wordmark /></Link>
       <div className="flex-1 flex justify-center"><SearchBar /></div>
       <div className="ml-auto"><WalletButton /></div>
     </div>
@@ -64,7 +65,7 @@ export function AppShell({ children, right }: { children: React.ReactNode; right
   }, [restoring, isConnected, router]);
   if (restoring || !isConnected) {
     return <div className="min-h-screen flex flex-col items-center justify-center gap-3">
-      <div className="font-bold text-xl">MST<span className="text-teal-300">ORA</span></div>
+      <div className="text-xl"><Wordmark /></div>
       <div className="h-5 w-5 rounded-full border-2 border-white/15 border-t-teal-300 animate-spin" />
     </div>;
   }

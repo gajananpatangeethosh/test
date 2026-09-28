@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { AI_NAME, APP_NAME, APP_URL } from "@/lib/brand";
 
 // Orbit → OpenRouter proxy. The API key stays server-side (never NEXT_PUBLIC).
 // Model: OPENROUTER_MODEL (single id, or comma-separated fallback chain).
@@ -28,7 +29,7 @@ const MODELS = Array.from(
 const HEADERS_TIMEOUT_MS = 25_000;
 
 
-const SYSTEM = `You are Orbit, the in-app AI companion of MSTORA — a social + creator-coin platform on MST Blockchain (testnet chain 91562037, currency tMSTC; mainnet chain 4646).
+const SYSTEM = `You are Orbit, the in-app AI companion of Echo — a social + creator-coin platform on MST Blockchain (testnet chain 91562037, currency tMSTC; mainnet chain 4646).
 Core loop: Create → Discover → Collect → Trade → Earn. Creator coins and post coins are planned on-chain via factory contracts (not deployed yet).
 Be concise, witty, and helpful like a social AI companion. Use short paragraphs, minimal emojis. Never invent contract addresses, balances, or transaction hashes. If asked for live chain data, say which MST explorer page to check.`;
 
@@ -49,8 +50,8 @@ export async function POST(req: NextRequest) {
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://mstora.app",
-        "X-Title": "MSTORA Orbit",
+        "HTTP-Referer": APP_URL,
+        "X-Title": `${APP_NAME} ${AI_NAME}`,
       },
       body: JSON.stringify({
         model, stream: true,

@@ -1,18 +1,26 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Loader2, Wallet } from "lucide-react";
 import { useWallet, shortAddress } from "./wallet-provider";
 import { Button } from "../ui";
+import { Wordmark } from "../wordmark";
+import { APP_NAME } from "@/lib/brand";
 import { ACTIVE_NETWORK } from "@/lib/mst/config";
 
+const PUBLIC_ROUTES = ["/"];
+
 /**
- * Application gate: the whole app stays hidden until a wallet is connected.
+ * Application gate: the app stays hidden until a wallet is connected.
+ * Public marketing routes (the landing page) always render, so a
+ * disconnected visitor lands on `/` and connects from there.
  * `restoring` covers the silent-reconnect probe so returning users are not
  * flashed the connect screen while `eth_accounts` is still in flight.
  */
 export function WalletGate({ children }: { children: React.ReactNode }) {
   const { isConnected, isConnecting, restoring, connect, error, clearError, address, balance } = useWallet();
-  if (isConnected) return <>{children}</>;
+  const path = usePathname();
+  if (isConnected || PUBLIC_ROUTES.includes(path)) return <>{children}</>;
   return <GateScreen
     isConnecting={isConnecting} restoring={restoring} error={error} clearError={clearError}
     connect={() => void connect()} address={address} balance={balance} />;
@@ -42,7 +50,7 @@ function GateScreen({ isConnecting, restoring, error, clearError, connect, addre
     </span>
     <h1 className="text-2xl font-bold text-center">Connect your wallet</h1>
     <p className="muted text-sm text-center max-w-sm">
-      MSTORA is a wallet-gated app — every creator, coin, post and trade needs an address.
+      {APP_NAME} is a wallet-gated app — every creator, coin, post and trade needs an address.
       Connect BridgeKey (or any MST-compatible EVM wallet) to continue.
     </p>
 
@@ -69,7 +77,7 @@ function GateScreen({ isConnecting, restoring, error, clearError, connect, addre
 
     {address === "" && <p className="muted text-[11px] text-center max-w-md">
       No wallet? Use any MST-compatible EVM wallet (e.g. MetaMask with the {ACTIVE_NETWORK.label} network) or get test funds at the MST faucet.
-      MSTORA never sees your keys or seed phrase.
+      {APP_NAME} never sees your keys or seed phrase.
     </p>}
     {balance !== null && <p className="muted text-[11px] text-center font-mono">{shortAddress(address)}</p>}
   </Splash>;
@@ -79,7 +87,7 @@ function Splash({ children }: { children: React.ReactNode }) {
   return <div className="min-h-[100dvh] bg-[#08090b] flex flex-col items-center justify-center px-5 py-10 relative">
     <div className="absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(45,212,191,.10),transparent_70%)]" />
     <div className="relative flex flex-col items-center gap-5 w-full max-w-md">
-      <div className="text-xl font-bold tracking-tight">MST<span className="text-teal-300">ORA</span></div>
+      <div className="text-xl"><Wordmark /></div>
       {children}
     </div>
   </div>;

@@ -29,7 +29,7 @@ const EXPECTED: MstErrorCode[] = ["USER_REJECTED", "PENDING", "NETWORK_SWITCH_RE
 export function toMstError(err: unknown): MstError {
   if (err instanceof MstError) return err;
   const mapped = classify(err);
-  if (typeof window !== "undefined" && !EXPECTED.includes(mapped.code)) console.warn("[mstora] wallet error:", err);
+  if (typeof window !== "undefined" && !EXPECTED.includes(mapped.code)) console.warn("[echo] wallet error:", err);
   return mapped;
 }
 function classify(err: unknown): MstError {

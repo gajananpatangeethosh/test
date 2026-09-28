@@ -48,7 +48,7 @@ export function WalletButton() {
     <button onClick={() => setModal(true)} className="rounded-full bg-white text-black text-sm font-medium px-5 py-2 hover:bg-teal-100">Connect BridgeKey</button>
     <Modal open={modal} onClose={() => { setModal(false); clearError(); }}>
       <div className="font-semibold text-lg">Connect BridgeKey</div>
-      <p className="muted text-sm mt-1">Non-custodial sign-in. MSTORA never sees your keys or seed phrase — approval happens in your wallet.</p>
+      <p className="muted text-sm mt-1">Non-custodial sign-in. Echo never sees your keys or seed phrase — approval happens in your wallet.</p>
       <Button
         disabled={isConnecting}
         onClick={() => { clearError(); void connect(); }}

@@ -1,4 +1,4 @@
-// MSTORA contract addresses — ALL placeholders until contracts are deployed.
+// Echo contract addresses — ALL placeholders until contracts are deployed.
 // Set via environment; never hardcode addresses here.
 export const ADDRESSES = {
   creatorFactory: process.env.NEXT_PUBLIC_CREATOR_FACTORY_ADDRESS || "",

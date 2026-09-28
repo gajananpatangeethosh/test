@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { AI_NAME, APP_NAME, APP_URL } from "@/lib/brand";
 import {
   MAX_TRANSFER, checkTransfer, currency, extractAddresses, extractAmounts, type TransferDraft,
 } from "@/lib/orbit/transfer";
@@ -80,8 +81,8 @@ async function pickAmount(
       headers: {
         Authorization: `Bearer ${key}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://mstora.app",
-        "X-Title": "MSTORA Orbit Transfer",
+        "HTTP-Referer": APP_URL,
+        "X-Title": `${APP_NAME} ${AI_NAME} Transfer`,
       },
       body: JSON.stringify({
         model, temperature: 0, max_tokens: MAX_TOKENS, stream: false,

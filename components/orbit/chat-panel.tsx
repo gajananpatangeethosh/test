@@ -12,14 +12,17 @@ import { ACTIVE_NETWORK, getExplorerTxUrl } from "@/lib/mst/config";
 import type { TxStage } from "@/lib/mst/types";
 import { cn } from "@/lib/utils";
 import { orbitText } from "@/lib/orbit/text";
+import { ORBIT_THREAD_KEY } from "@/lib/brand";
 import {
   MAX_TRANSFER, REQUIRE_CONFIRM, checkBalance, checkTransfer, currency,
   type TransferDraft,
 } from "@/lib/orbit/transfer";
 import {
-  PUTER_MODELS, PUTER_RATIOS, describePuterError, loadPuter,
-  type PuterModel, type PuterRatio,
+  PUTER_MODELS, PUTER_RATIOS, describePuterError, generateImage,
+  signInPuter, signOutPuter, signedInUser,
+  type PuterModel, type PuterRatio, type PuterUser,
 } from "@/lib/orbit/puter";
+import { openrouterImage, type ImageEngine } from "@/lib/orbit/image";
 
 // ── Thread model ─────────────────────────────────────────────────────────────
 // One conversation holds all three capabilities. Text bubbles go to the LLM;
@@ -75,7 +78,7 @@ const SUGGESTIONS: Record<Mode, string[]> = {
     `Send 12.5 ${currency()} to 0x2222222222222222222222222222222222222222 for a tip`,
   ],
 };
-const LS_KEY = "mstora-orbit-thread";
+const LS_KEY = ORBIT_THREAD_KEY;
 const IS_TESTNET = ACTIVE_NETWORK.name === "testnet";
 
 type Mode = "chat" | "post" | "tx";
@@ -112,6 +115,14 @@ export default function OrbitChat() {
   const [copied, setCopied] = useState("");
   const [model, setModel] = useState<PuterModel>(PUTER_MODELS[0]);
   const [ratio, setRatio] = useState<PuterRatio>(PUTER_RATIOS[0]);
+  // undefined = not checked yet, null = signed out, object = account on this page.
+  const [puterUser, setPuterUser] = useState<PuterUser | undefined>(undefined);
+  // Test mode returns a sample image and spends nothing, which is the only way to
+  // tell "our wiring is broken" apart from "this account can't afford it".
+  const [puterTest, setPuterTest] = useState(false);
+  // OpenRouter runs on the app's own key, so it is the default: it works for
+  // whoever is running the app without needing a Puter account.
+  const [engine, setEngine] = useState<ImageEngine>("openrouter");
   const abort = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
@@ -202,6 +213,28 @@ export default function OrbitChat() {
   }, [hydrated, msgs]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
 
+  // Read which Puter account this page is on when Post mode opens. Never prompts:
+  // Puter's popup only counts as user-initiated, so sign-in waits for a real click.
+  useEffect(() => {
+    if (mode !== "post" || puterUser !== undefined) return;
+    let live = true;
+    signedInUser().then((u) => { if (live) setPuterUser(u); }).catch(() => { if (live) setPuterUser(null); });
+    return () => { live = false; };
+  }, [mode, puterUser]);
+
+  const doSignIn = async () => {
+    try {
+      setError("");
+      setPuterUser(await signInPuter());
+    } catch (e) { setError(describePuterError(e)); }
+  };
+
+  const doSignOut = () => {
+    setError("");
+    signOutPuter();
+    setPuterUser(null);
+  };
+
   // `status` is a union because it means different things per kind; everything
   // else here is a plain optional field present on one or both variants.
   type MsgPatch = Partial<{
@@ -283,17 +316,34 @@ export default function OrbitChat() {
       { kind: "image", id, prompt: p, src: null, caption: "", status: "loading" } as ImageMsg,
     ]);
     try {
-      const puter = await loadPuter();
-      const result = await puter.ai.txt2img(p, {
-        provider: model.provider, model: model.id, ratio: { w: ratio.w, h: ratio.h },
+      // A page that has never identified itself runs on Puter's throwaway guest
+      // session, which has no credits — and reports that as "no credits
+      // remaining" regardless of what the user's own dashboard says. Test mode is
+      // exempt: it is free and needs no account, so it stays a valid diagnostic.
+      if (puterUser === null && !puterTest) {
+        patch(id, {
+          status: "error",
+          error: "This page isn't signed in to Puter, so it has no credits of its own. Click 'Sign in "
+            + "with Puter' below, pick your account, then resend this prompt.",
+        });
+        return;
+      }
+      const result = await generateImage(p, {
+        provider: model.provider,
+        model: model.id,
+        ratio: { w: ratio.w, h: ratio.h },
+        testMode: puterTest,
       });
-      if (!result?.src) throw new Error("The model returned no image.");
       patch(id, { src: result.src, status: "done" });
       // Caption is a bonus; a failure here must not fail the image.
-      void orbitText([{
-        role: "user",
-        content: `Write a short social caption (max 180 characters) for this image. No hashtags unless one fits naturally. No preamble — just the caption.\n\nImage prompt: ${p}`,
-      }]).then((c) => c && patch(id, { caption: c })).catch(() => undefined);
+      if (!puterTest) {
+        void orbitText([{
+          role: "user",
+          content: `Write a short social caption (max 180 characters) for this image. No hashtags unless one fits naturally. No preamble — just the caption.\n\nImage prompt: ${p}`,
+        }]).then((c) => c && patch(id, { caption: c })).catch(() => undefined);
+      } else {
+        patch(id, { caption: "Test mode — sample image, no credits spent." });
+      }
     } catch (e) {
       patch(id, { status: "error", error: describePuterError(e) });
     } finally { setBusy(false); }
@@ -392,7 +442,7 @@ export default function OrbitChat() {
   const downloadImage = (src: string) => {
     const a = document.createElement("a");
     a.href = src;
-    a.download = `mstora-orbit-${newId()}.png`;
+    a.download = `echo-orbit-${newId()}.png`;
     a.click();
   };
 
@@ -420,7 +470,7 @@ export default function OrbitChat() {
           <p className="muted text-sm mt-1 max-w-xs">
             {mode === "post" ? "Describe it. Puter draws it, Orbit captions it."
               : mode === "tx" ? "Describe the transfer, then approve it in your wallet."
-              : "Your guide to MSTORA, MST Blockchain and creator coins."}
+              : "Your guide to Echo, MST Blockchain and creator coins."}
           </p>
           {mode === "tx" && (
             <p className="max-w-sm mt-3 text-[11px] leading-relaxed muted flex items-start gap-1.5 text-left">
@@ -590,16 +640,48 @@ export default function OrbitChat() {
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
             <select value={model.id} onChange={(e) => setModel(PUTER_MODELS.find((m) => m.id === e.target.value) ?? PUTER_MODELS[0])}
               className="rounded-full bg-white/[.06] border border-white/10 px-2.5 py-1 text-[11px] outline-none">
-              {PUTER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+              {PUTER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label} — {m.hint}</option>)}
             </select>
-            <div className="flex gap-1">
-              {PUTER_RATIOS.map((r) => (
-                <button key={r.id} onClick={() => setRatio(r)}
-                  className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
-                    ratio.id === r.id ? "border-teal-300/60 bg-teal-300/10 text-white" : "border-white/10 muted hover:text-white")}>
-                  {r.label}
+            {!model.fixedSize && (
+              <div className="flex gap-1">
+                {PUTER_RATIOS.map((r) => (
+                  <button key={r.id} onClick={() => setRatio(r)}
+                    className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
+                      ratio.id === r.id ? "border-teal-300/60 bg-teal-300/10 text-white" : "border-white/10 muted hover:text-white")}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setPuterTest((v) => !v)} title="Generate a free sample image without spending credits"
+              className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
+                puterTest ? "border-sky-300/50 bg-sky-300/10 text-sky-200" : "border-white/10 muted hover:text-white")}>
+              {puterTest ? "Test mode on" : "Test mode"}
+            </button>
+            <div className="ml-auto flex items-center gap-1">
+              {puterUser === undefined ? (
+                <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] muted">checking Puter…</span>
+              ) : puterUser ? (
+                <>
+                  <button onClick={() => void doSignIn()} title="Switch Puter account"
+                    className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
+                      puterUser.is_temp
+                        ? "border-amber-300/50 bg-amber-300/10 text-amber-200 hover:bg-amber-300/20"
+                        : "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:bg-emerald-400/20")}>
+                    {puterUser.username ?? "signed in"}
+                    {puterUser.is_temp ? " (temporary)" : ""}
+                  </button>
+                  <button onClick={doSignOut} title="Sign out of Puter on this page"
+                    className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] muted transition hover:border-white/25 hover:text-white">
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => void doSignIn()}
+                  className="rounded-full border border-white/15 bg-white px-2.5 py-1 text-[11px] font-medium text-black hover:bg-white/90">
+                  Sign in with Puter
                 </button>
-              ))}
+              )}
             </div>
           </div>
         )}

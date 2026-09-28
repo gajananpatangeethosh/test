@@ -12,7 +12,7 @@ const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 42
 const spark = (base: number, drift: number, n = 24) => Array.from({ length: n }, (_, i) => +(base * (1 + drift * (i / n) + 0.06 * Math.sin(i * 1.3) + (rnd() - 0.5) * 0.04)).toFixed(4));
 
 export const creators: Creator[] = [
-  { username: "gajanan", name: "Gajanan", bio: "Building MSTORA · onchain media experiments from Mumbai", followers: 12840, following: 312, verified: true, coinId: "gajanan", joined: "Jan 2026", location: "Mumbai" },
+  { username: "gajanan", name: "Gajanan", bio: "Building Echo · onchain media experiments from Mumbai", followers: 12840, following: 312, verified: true, coinId: "gajanan", joined: "Jan 2026", location: "Mumbai" },
   { username: "anaya", name: "Anaya Rao", bio: "Generative artist · 1/1s + open editions", followers: 21400, following: 480, verified: true, coinId: "anaya", joined: "Dec 2025", location: "Bengaluru" },
   { username: "memelord", name: "Meme Lord", bio: "Professional shitposter. Amateur millionaire.", followers: 45200, following: 1200, verified: true, coinId: "memelord", joined: "Nov 2025", location: "Internet" },
   { username: "satoshi_jr", name: "Kabir", bio: "AI agents + autonomous worlds", followers: 9800, following: 210, verified: true, coinId: "aiagent", joined: "Jan 2026", location: "Delhi" },
@@ -84,7 +84,7 @@ export const posts: Post[] = [
   { id: "p28", creator: "voicebox", time: h(76), caption: "Ep 42 with @gajanan: building a social network you can own.", image: img("mstora-pod"), kind: "photo", likes: 225, comments: 31, shares: 14, coinId: "voice", collects: 47 },
   { id: "p29", creator: "pixelpriya", time: h(80), caption: "Collector showcase: your walls > galleries.", image: img("mstora-wall"), kind: "photo", likes: 189, comments: 22, shares: 10, coinId: "pixel", collects: 58 },
   { id: "p30", creator: "fitonchain", time: h(84), caption: "Couch to 5K plan — free for $RUN holders.", kind: "text", likes: 143, comments: 29, shares: 12, coinId: "runclub", collects: 39 },
-  { id: "p31", creator: "gajanan", time: h(90), caption: "MSTORA manifesto: create → discover → collect → trade → earn.", kind: "text", likes: 512, comments: 104, shares: 78, coinId: "gajanan", collects: 132 },
+  { id: "p31", creator: "gajanan", time: h(90), caption: "Echo manifesto: create → discover → collect → trade → earn.", kind: "text", likes: 512, comments: 104, shares: 78, coinId: "gajanan", collects: 132 },
   { id: "p32", creator: "gamefolio", time: h(96), caption: "Devlog: adding onchain leaderboards took one afternoon.", image: img("mstora-devlog"), kind: "photo", likes: 138, comments: 27, shares: 6, coinId: "playtest", collects: 24 },
 ];
 

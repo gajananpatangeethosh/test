@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { LandingNav, HeroCta, HeroVisual, Ticker, HowItWorks, MarketsPreview, OrbitTeaser, WalletSection, FinalCta, LandingFooter, Reveal } from "@/components/landing";
+import { APP_DESCRIPTION, APP_NAME, APP_TAGLINE } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "MSTORA — Own the culture you create",
-  description: "MSTORA is a social network on MST Blockchain where posts become collectible creator coins. Create, discover, collect, trade, earn.",
+  title: `${APP_NAME} — ${APP_TAGLINE}`,
+  description: APP_DESCRIPTION,
 };
 
 export default function Landing() {
@@ -26,7 +27,7 @@ export default function Landing() {
           </Reveal>
           <Reveal delay={0.16}>
             <p className="muted text-base sm:text-lg mt-5 max-w-md leading-relaxed">
-              MSTORA is a social network where every post can become a coin.
+              Echo is a social network where every post can become a coin.
               Collect editions, trade creator markets, and earn from the attention you create — settled on MST Blockchain.
             </p>
           </Reveal>

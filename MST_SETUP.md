@@ -1,4 +1,4 @@
-# MSTORA × MST Blockchain — Setup Guide
+# Echo × MST Blockchain — Setup Guide
 
 ## What was verified (official sources, Sep 2026)
 
