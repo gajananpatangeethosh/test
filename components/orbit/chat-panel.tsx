@@ -82,7 +82,7 @@ type Mode = "chat" | "post" | "tx";
 
 const MODES: { id: Mode; label: string; icon: typeof Sparkles; placeholder: string }[] = [
   { id: "chat", label: "Chat", icon: Sparkles, placeholder: "Message Orbit…" },
-  { id: "post", label: "Image", icon: ImagePlus, placeholder: "Describe the image to generate…" },
+  { id: "post", label: "Post", icon: ImagePlus, placeholder: "Describe the post image to generate…" },
   { id: "tx", label: "Send", icon: ArrowRightLeft, placeholder: `e.g. Send 5 ${currency()} to 0x…` },
 ];
 
@@ -370,7 +370,8 @@ export default function OrbitChat() {
 
       const draft: TransferDraft = { to: local.to, amount: local.amount, memo: local.memo };
       setMsgs((m) => [...m, {
-        kind: "tx", id, ...draft,
+        kind: "tx", id,
+        to: draft.to, amount: draft.amount, memo: draft.memo ?? "",
         status: REQUIRE_CONFIRM ? "review" : "preparing",
         source: data.source,
       }]);
