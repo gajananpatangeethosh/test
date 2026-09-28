@@ -14,9 +14,16 @@ import {
 import type {
   DbComment,
   FeedPost,
+  LiveCoin,
+  LiveCoinTrade,
+  LiveCoinTradeResult,
+  LivePostCoin,
+  LivePostCoinTradeResult,
   LiveResult,
+  MintStatus,
   OrbitConversation,
   OrbitMessage,
+  PostCoinInfo,
   ProfilePrivate,
   ProfilePublic,
 } from "./types";
@@ -92,7 +99,7 @@ function toPublicProfile(row: ProfileRow, postCount: number): ProfilePublic {
   };
 }
 
-function toFeedPost(row: PostRow, author: ProfileRow, viewerLiked: boolean): FeedPost {
+function toFeedPost(row: PostRow, author: ProfileRow, viewerLiked: boolean, postCoin?: PostCoinInfo): FeedPost {
   const post: FeedPost = {
     source: "live",
     id: row.id,
@@ -112,6 +119,7 @@ function toFeedPost(row: PostRow, author: ProfileRow, viewerLiked: boolean): Fee
   };
   if (row.image_url) post.image = row.image_url;
   if (row.coin_id) post.coinId = row.coin_id;
+  if (postCoin) post.postCoin = postCoin;
   return post;
 }
 
@@ -174,11 +182,12 @@ export async function getLiveFeed(viewer: string | null, limit = 30): Promise<Li
       );
       liked = new Set(likes.map((l) => l.post_id));
     }
+    const postCoins = await loadPostCoinInfoByPostIds(posts.map((p) => p.id), viewer);
     const feed: FeedPost[] = [];
     for (const post of posts) {
       const author = byWallet.get(post.author_wallet);
       if (!author) continue;
-      feed.push(toFeedPost(post, author, liked.has(post.id)));
+      feed.push(toFeedPost(post, author, liked.has(post.id), postCoins.get(post.id)));
     }
     return { data: feed, liveError: null };
   } catch (e) {
@@ -214,7 +223,8 @@ export async function getLivePost(postId: string, viewer: string | null): Promis
     if (like.error) throw new Error("LIKE_STATUS_FAILED");
     viewerLiked = !!(like.data as { post_id: string } | null);
   }
-  return toFeedPost(post, author, viewerLiked);
+  const postCoins = await loadPostCoinInfoByPostIds([post.id], viewer);
+  return toFeedPost(post, author, viewerLiked, postCoins.get(post.id));
 }
 
 export async function getLivePostsByAuthor(walletInput: string, viewer: string | null, limit = 20): Promise<FeedPost[]> {
@@ -245,7 +255,8 @@ export async function getLivePostsByAuthor(walletInput: string, viewer: string |
     );
     liked = new Set(likes.map((l) => l.post_id));
   }
-  return posts.map((p) => toFeedPost(p, author, liked.has(p.id)));
+  const postCoins = await loadPostCoinInfoByPostIds(posts.map((p) => p.id), viewer);
+  return posts.map((p) => toFeedPost(p, author, liked.has(p.id), postCoins.get(p.id)));
 }
 
 export async function getLiveProfilePage(
@@ -553,7 +564,20 @@ export async function createLivePost(
       .single()) as { data: PostRow | null; error: unknown },
     "POST",
   );
-  return toFeedPost(inserted, author, false);
+  const ensured = await sb.rpc("ensure_post_coin", { p_post_id: inserted.id });
+  if (ensured.error) {
+    await sb.from("posts").delete().eq("id", inserted.id);
+    if (isMissingTable(ensured.error)) throw new Error("DB_NOT_READY");
+    const detail = String((ensured.error as { message?: string }).message ?? "");
+    throw new Error(detail.includes("ensure_post_coin") ? "POST_COIN_FAILED" : `POST_COIN_FAILED: ${detail.slice(0, 120)}`);
+  }
+  const liveCoin = await getPostCoinByPostId(inserted.id, wallet);
+  if (!liveCoin) {
+    await sb.from("posts").delete().eq("id", inserted.id);
+    throw new Error("POST_COIN_FAILED");
+  }
+  const postCoin = toPostCoinInfo(liveCoin);
+  return toFeedPost(inserted, author, false, postCoin);
 }
 
 export async function deleteLivePost(walletInput: string, postId: string): Promise<string> {
@@ -680,4 +704,572 @@ export async function appendOrbitMessage(
     await sb.from("orbit_conversations").update({ title: input.content.trim().slice(0, 80) }).eq("id", conversationId);
   }
   return { role: inserted.role, content: inserted.content, model: inserted.model, seq: inserted.seq, createdAt: inserted.created_at };
+}
+
+// -- creator coins ------------------------------------------------------------
+// One coin per profile (created by the profiles_creator_coin trigger). Market
+// stats are derived here rather than denormalized: holders come from
+// coin_holdings, volume/change/sparkline from coin_trades. A coin only becomes
+// an actual NFT once mint_status is 'minted' and a token_address exists.
+
+const COIN_COLUMNS =
+  "id,owner_wallet,name,symbol,price_mst,reserve_mst,total_supply,chain_id,token_address,token_id,mint_status,mint_tx_hash,mint_error,created_at";
+
+/** Initial float, mirrors the total_supply default in 0002_creator_coins.sql. */
+const COIN_INITIAL_SUPPLY = 1_000_000;
+const COIN_TRADE_LIMIT = 2000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type CoinRow = {
+  id: string;
+  owner_wallet: string;
+  name: string;
+  symbol: string;
+  price_mst: number | string;
+  reserve_mst: number | string;
+  total_supply: number | string;
+  chain_id: string | null;
+  token_address: string | null;
+  token_id: string | null;
+  mint_status: string;
+  mint_tx_hash: string | null;
+  mint_error: string | null;
+  created_at: string;
+};
+
+type CoinTradeRow = {
+  id: string;
+  coin_id: string;
+  side: "buy" | "sell";
+  trader_wallet: string;
+  amount: number | string;
+  price_mst: number | string;
+  total_mst: number | string;
+  settlement: "offchain" | "onchain";
+  created_at: string;
+};
+
+function num(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function asMintStatus(value: unknown): MintStatus {
+  return value === "minted" || value === "minting" || value === "failed" ? value : "pending";
+}
+
+function coinErrorCode(error: unknown): string {
+  const message = String((error as { message?: unknown } | null)?.message ?? "");
+  const known = [
+    "INVALID_COIN_SIDE",
+    "INVALID_COIN_AMOUNT",
+    "COIN_AMOUNT_TOO_LARGE",
+    "COIN_AMOUNT_TOO_SMALL",
+    "COIN_NOT_FOUND",
+    "COIN_SUPPLY_EXHAUSTED",
+    "INSUFFICIENT_COIN_BALANCE",
+    "POOL_EMPTY",
+    "PROFILE_REQUIRED",
+  ];
+  return known.find((code) => message.includes(code)) ?? "TRADE_FAILED";
+}
+
+/** Trades arrive newest-first; sparklines read left to right. */
+function buildSpark(trades: CoinTradeRow[]): number[] {
+  const prices = trades
+    .map((t) => num(t.price_mst))
+    .filter((p) => p > 0)
+    .reverse()
+    .slice(-24);
+  return prices.length < 2 ? [] : prices.map((p) => +p.toFixed(6));
+}
+
+function changeSince(trades: CoinTradeRow[], price: number, sinceIso: string): number {
+  const window = trades.filter((t) => t.created_at >= sinceIso);
+  if (window.length === 0) return 0;
+  const base = num(window[window.length - 1].price_mst);
+  if (base <= 0) return 0;
+  return +(((price - base) / base) * 100).toFixed(2);
+}
+
+async function assembleCoins(rows: CoinRow[], viewer: string | null, tradeLimit = COIN_TRADE_LIMIT): Promise<LiveCoin[]> {
+  if (rows.length === 0) return [];
+  const sb = serviceClient();
+  const ids = rows.map((r) => r.id);
+  const wallets = Array.from(new Set(rows.map((r) => r.owner_wallet)));
+
+  const owners = mustData(
+    (await sb
+      .from("profiles")
+      .select("wallet_address,username,display_name,avatar_url,verified")
+      .in("wallet_address", wallets)) as {
+      data: Pick<ProfileRow, "wallet_address" | "username" | "display_name" | "avatar_url" | "verified">[] | null;
+      error: unknown;
+    },
+    "COIN_OWNERS",
+  );
+  const ownerByWallet = new Map(owners.map((o) => [o.wallet_address, o]));
+
+  const holdings = mustData(
+    (await sb.from("coin_holdings").select("coin_id,wallet,amount").in("coin_id", ids).gt("amount", 0)) as {
+      data: { coin_id: string; wallet: string; amount: number | string }[] | null;
+      error: unknown;
+    },
+    "COIN_HOLDINGS",
+  );
+  const holdersByCoin = new Map<string, number>();
+  const holdingByCoinWallet = new Map<string, number>();
+  for (const holding of holdings) {
+    holdersByCoin.set(holding.coin_id, (holdersByCoin.get(holding.coin_id) ?? 0) + 1);
+    // Lowercased both sides: wallet_address is citext, so 0xAbC and 0xabc are
+    // one profile, and a Map keyed on the raw string would miss the balance.
+    holdingByCoinWallet.set(`${holding.coin_id}:${holding.wallet.toLowerCase()}`, num(holding.amount));
+  }
+
+  const trades = mustData(
+    (await sb
+      .from("coin_trades")
+      .select("id,coin_id,side,trader_wallet,amount,price_mst,total_mst,settlement,created_at")
+      .in("coin_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(tradeLimit)) as { data: CoinTradeRow[] | null; error: unknown },
+    "COIN_TRADES",
+  );
+  const tradesByCoin = new Map<string, CoinTradeRow[]>();
+  for (const trade of trades) {
+    const list = tradesByCoin.get(trade.coin_id);
+    if (list) list.push(trade);
+    else tradesByCoin.set(trade.coin_id, [trade]);
+  }
+
+  const me = viewer ? normalizeWalletInput(viewer).toLowerCase() : null;
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+  const volumeByCoin = new Map<string, number>();
+  for (const trade of trades) {
+    if (trade.created_at < dayAgo) continue;
+    volumeByCoin.set(trade.coin_id, (volumeByCoin.get(trade.coin_id) ?? 0) + num(trade.total_mst));
+  }
+
+  const coins: LiveCoin[] = [];
+  for (const row of rows) {
+    const owner = ownerByWallet.get(row.owner_wallet);
+    if (!owner) continue;
+    const price = num(row.price_mst);
+    const coinTrades = tradesByCoin.get(row.id) ?? [];
+    coins.push({
+      id: row.id,
+      name: row.name,
+      symbol: row.symbol,
+      ownerWallet: row.owner_wallet,
+      creatorUsername: owner.username,
+      creatorDisplayName: owner.display_name,
+      creatorAvatarUrl: owner.avatar_url,
+      creatorVerified: owner.verified,
+      price,
+      change24h: changeSince(coinTrades, price, dayAgo),
+      volume24h: volumeByCoin.get(row.id) ?? 0,
+      marketCap: +(price * COIN_INITIAL_SUPPLY).toFixed(2),
+      liquidity: +num(row.reserve_mst).toFixed(2),
+      holders: holdersByCoin.get(row.id) ?? 0,
+      spark: buildSpark(coinTrades),
+      reserveMst: num(row.reserve_mst),
+      poolSupply: num(row.total_supply),
+      totalSupply: COIN_INITIAL_SUPPLY,
+      mintStatus: asMintStatus(row.mint_status),
+      mintTxHash: row.mint_tx_hash,
+      mintError: row.mint_error,
+      chainId: row.chain_id,
+      tokenAddress: row.token_address,
+      tokenId: row.token_id,
+      settlement: row.token_address ? "onchain" : "offchain",
+      viewerHolding: me ? holdingByCoinWallet.get(`${row.id}:${me}`) ?? 0 : 0,
+      createdAt: row.created_at,
+    });
+  }
+  return coins;
+}
+
+export async function listLiveCoins(viewer: string | null): Promise<LiveResult<LiveCoin[]>> {
+  try {
+    const sb = serviceClient();
+    const rows = mustData(
+      (await sb
+        .from("creator_coins")
+        .select(COIN_COLUMNS)
+        .order("created_at", { ascending: false })
+        .limit(200)) as { data: CoinRow[] | null; error: unknown },
+      "COINS",
+    );
+    return { data: await assembleCoins(rows, viewer), liveError: null };
+  } catch (e) {
+    if (e instanceof Error && (e.message === "DB_NOT_READY" || e.message.startsWith("DB_NOT_CONFIGURED"))) {
+      return { data: [], liveError: e.message };
+    }
+    throw e;
+  }
+}
+
+export async function getLiveCoin(coinId: string, viewer: string | null): Promise<LiveCoin | null> {
+  if (!UUID_RE.test(coinId)) return null;
+  const sb = serviceClient();
+  const result = await sb.from("creator_coins").select(COIN_COLUMNS).eq("id", coinId).maybeSingle();
+  if (result.error) {
+    if (isMissingTable(result.error)) throw new Error("DB_NOT_READY");
+    throw new Error("COIN_FAILED");
+  }
+  const row = result.data as CoinRow | null;
+  if (!row) return null;
+  const [coin] = await assembleCoins([row], viewer);
+  return coin ?? null;
+}
+
+export async function listLiveCoinTrades(coinId: string, limit = 30): Promise<LiveCoinTrade[]> {
+  if (!UUID_RE.test(coinId)) return [];
+  const sb = serviceClient();
+  const rows = mustData(
+    (await sb
+      .from("coin_trades")
+      .select("id,coin_id,side,trader_wallet,amount,price_mst,total_mst,settlement,created_at")
+      .eq("coin_id", coinId)
+      .order("created_at", { ascending: false })
+      .limit(limit)) as { data: CoinTradeRow[] | null; error: unknown },
+    "COIN_TRADES",
+  );
+  if (rows.length === 0) return [];
+  const wallets = Array.from(new Set(rows.map((r) => r.trader_wallet)));
+  const traders = mustData(
+    (await sb.from("profiles").select("wallet_address,username").in("wallet_address", wallets)) as {
+      data: { wallet_address: string; username: string }[] | null;
+      error: unknown;
+    },
+    "COIN_TRADERS",
+  );
+  const byWallet = new Map(traders.map((t) => [t.wallet_address, t.username]));
+  return rows.map((r) => ({
+    id: r.id,
+    side: r.side,
+    amount: num(r.amount),
+    price: num(r.price_mst),
+    totalMst: num(r.total_mst),
+    settlement: r.settlement,
+    createdAt: r.created_at,
+    traderUsername: byWallet.get(r.trader_wallet) ?? "unknown",
+  }));
+}
+
+/** Idempotent: the trigger already created it, so this only reads. */
+export async function getMyLiveCoin(walletInput: string): Promise<LiveCoin | null> {
+  const wallet = normalizeWalletInput(walletInput);
+  const sb = serviceClient();
+  const ensured = await sb.rpc("ensure_creator_coin", { p_wallet: wallet });
+  if (ensured.error) {
+    if (isMissingTable(ensured.error)) throw new Error("DB_NOT_READY");
+    throw new Error("ENSURE_COIN_FAILED");
+  }
+  const coinId = typeof ensured.data === "string" ? ensured.data : null;
+  if (!coinId) throw new Error("ENSURE_COIN_FAILED");
+  return getLiveCoin(coinId, wallet);
+}
+
+export async function tradeLiveCoin(
+  walletInput: string,
+  coinId: string,
+  side: "buy" | "sell",
+  amountInput: unknown,
+): Promise<LiveCoinTradeResult> {
+  const wallet = normalizeWalletInput(walletInput);
+  if (!UUID_RE.test(coinId)) throw new Error("COIN_NOT_FOUND");
+  const amount = typeof amountInput === "number" ? amountInput : Number(amountInput);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_COIN_AMOUNT");
+  if (amount > 1_000_000) throw new Error("COIN_AMOUNT_TOO_LARGE");
+  const sb = serviceClient();
+  const result = await sb.rpc("trade_creator_coin", {
+    p_trader: wallet,
+    p_coin: coinId,
+    p_side: side,
+    p_amount: amount,
+  });
+  if (result.error) throw new Error(coinErrorCode(result.error));
+  const data = result.data as {
+    side?: string;
+    amount?: unknown;
+    totalMst?: unknown;
+    price?: unknown;
+    holding?: unknown;
+  } | null;
+  if (!data) throw new Error("TRADE_FAILED");
+  return {
+    side: data.side === "sell" ? "sell" : "buy",
+    amount: num(data.amount),
+    totalMst: num(data.totalMst),
+    price: num(data.price),
+    holding: num(data.holding),
+  };
+}
+
+/** Owner-only. Called after the owner's wallet confirms the on-chain mint. */
+export async function recordCoinMint(
+  walletInput: string,
+  coinId: string,
+  input: { status: "minting" | "minted" | "failed"; txHash?: string; tokenAddress?: string; tokenId?: string; error?: string },
+): Promise<LiveCoin | null> {
+  const wallet = normalizeWalletInput(walletInput);
+  if (!UUID_RE.test(coinId)) throw new Error("COIN_NOT_FOUND");
+  const sb = serviceClient();
+  const owned = await sb.from("creator_coins").select("id").eq("id", coinId).eq("owner_wallet", wallet).maybeSingle();
+  if (owned.error) {
+    if (isMissingTable(owned.error)) throw new Error("DB_NOT_READY");
+    throw new Error("COIN_FAILED");
+  }
+  if (!owned.data) throw new Error("FORBIDDEN");
+  const update: Record<string, string | null> = { mint_status: input.status };
+  if (input.status === "minted") {
+    if (!input.txHash || !input.tokenAddress) throw new Error("MINT_REFERENCE_REQUIRED");
+    const { ACTIVE_NETWORK } = await import("@/lib/mst/config");
+    update.mint_tx_hash = input.txHash;
+    update.token_address = input.tokenAddress;
+    update.token_id = input.tokenId ?? null;
+    update.chain_id = String(ACTIVE_NETWORK.chainId);
+    update.mint_error = null;
+  }
+  if (input.status === "failed") update.mint_error = input.error ?? "MINT_FAILED";
+  const saved = await sb.from("creator_coins").update(update).eq("id", coinId);
+  if (saved.error) throw new Error("MINT_STATUS_FAILED");
+  return getLiveCoin(coinId, wallet);
+}
+
+// -- post coins ---------------------------------------------------------------
+const POST_COIN_COLUMNS =
+  "id,post_id,owner_wallet,name,symbol,price_mst,reserve_mst,total_supply,chain_id,token_address,token_id,mint_status,mint_tx_hash,mint_error,created_at";
+
+type PostCoinRow = {
+  id: string;
+  post_id: string;
+  owner_wallet: string;
+  name: string;
+  symbol: string;
+  price_mst: number | string;
+  reserve_mst: number | string;
+  total_supply: number | string;
+  chain_id: string | null;
+  token_address: string | null;
+  token_id: string | null;
+  mint_status: string;
+  mint_tx_hash: string | null;
+  mint_error: string | null;
+  created_at: string;
+};
+
+type PostCoinTradeRow = {
+  coin_id: string;
+  price_mst: number | string;
+  total_mst: number | string;
+  created_at: string;
+};
+
+function toPostCoinInfo(coin: LivePostCoin): PostCoinInfo {
+  return {
+    id: coin.id,
+    postId: coin.postId,
+    symbol: coin.symbol,
+    name: coin.name,
+    price: coin.price,
+    change24h: coin.change24h,
+    mintStatus: coin.mintStatus,
+    tokenAddress: coin.tokenAddress,
+    ownerWallet: coin.ownerWallet,
+    viewerHolding: coin.viewerHolding,
+  };
+}
+
+async function assemblePostCoins(rows: PostCoinRow[], viewer: string | null): Promise<LivePostCoin[]> {
+  if (rows.length === 0) return [];
+  const sb = serviceClient();
+  const ids = rows.map((r) => r.id);
+  const holdings = mustData(
+    (await sb.from("post_coin_holdings").select("coin_id,wallet,amount").in("coin_id", ids).gt("amount", 0)) as {
+      data: { coin_id: string; wallet: string; amount: number | string }[] | null;
+      error: unknown;
+    },
+    "POST_COIN_HOLDINGS",
+  );
+  const holdersByCoin = new Map<string, number>();
+  const holdingByCoinWallet = new Map<string, number>();
+  for (const holding of holdings) {
+    holdersByCoin.set(holding.coin_id, (holdersByCoin.get(holding.coin_id) ?? 0) + 1);
+    holdingByCoinWallet.set(`${holding.coin_id}:${holding.wallet.toLowerCase()}`, num(holding.amount));
+  }
+  const trades = mustData(
+    (await sb
+      .from("post_coin_trades")
+      .select("coin_id,price_mst,total_mst,created_at")
+      .in("coin_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(500)) as { data: PostCoinTradeRow[] | null; error: unknown },
+    "POST_COIN_TRADES",
+  );
+  const tradesByCoin = new Map<string, PostCoinTradeRow[]>();
+  for (const trade of trades) {
+    const list = tradesByCoin.get(trade.coin_id);
+    if (list) list.push(trade);
+    else tradesByCoin.set(trade.coin_id, [trade]);
+  }
+  const me = viewer ? normalizeWalletInput(viewer).toLowerCase() : null;
+  const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
+  const volumeByCoin = new Map<string, number>();
+  for (const trade of trades) {
+    if (trade.created_at < dayAgo) continue;
+    volumeByCoin.set(trade.coin_id, (volumeByCoin.get(trade.coin_id) ?? 0) + num(trade.total_mst));
+  }
+  const coins: LivePostCoin[] = [];
+  for (const row of rows) {
+    const price = num(row.price_mst);
+    const coinTrades = (tradesByCoin.get(row.id) ?? []).map((t) => ({
+      id: "",
+      coin_id: t.coin_id,
+      side: "buy" as const,
+      trader_wallet: "",
+      amount: 0,
+      price_mst: t.price_mst,
+      total_mst: t.total_mst,
+      settlement: "offchain" as const,
+      created_at: t.created_at,
+    }));
+    coins.push({
+      id: row.id,
+      postId: row.post_id,
+      name: row.name,
+      symbol: row.symbol,
+      ownerWallet: row.owner_wallet,
+      price,
+      change24h: changeSince(coinTrades, price, dayAgo),
+      volume24h: volumeByCoin.get(row.id) ?? 0,
+      holders: holdersByCoin.get(row.id) ?? 0,
+      reserveMst: num(row.reserve_mst),
+      totalSupply: num(row.total_supply),
+      mintStatus: asMintStatus(row.mint_status),
+      mintTxHash: row.mint_tx_hash,
+      mintError: row.mint_error,
+      chainId: row.chain_id,
+      tokenAddress: row.token_address,
+      settlement: row.token_address ? "onchain" : "offchain",
+      viewerHolding: me ? holdingByCoinWallet.get(`${row.id}:${me}`) ?? 0 : 0,
+      createdAt: row.created_at,
+    });
+  }
+  return coins;
+}
+
+async function loadPostCoinInfoByPostIds(postIds: string[], viewer: string | null): Promise<Map<string, PostCoinInfo>> {
+  if (postIds.length === 0) return new Map();
+  try {
+    const sb = serviceClient();
+    const rows = mustData(
+      (await sb.from("post_coins").select(POST_COIN_COLUMNS).in("post_id", postIds)) as {
+        data: PostCoinRow[] | null;
+        error: unknown;
+      },
+      "POST_COINS",
+    );
+    const coins = await assemblePostCoins(rows, viewer);
+    return new Map(coins.map((c) => [c.postId, toPostCoinInfo(c)]));
+  } catch (e) {
+    if (e instanceof Error && (e.message === "DB_NOT_READY" || e.message.startsWith("DB_NOT_CONFIGURED"))) {
+      return new Map();
+    }
+    throw e;
+  }
+}
+
+export async function getPostCoinByPostId(postId: string, viewer: string | null): Promise<LivePostCoin | null> {
+  const sb = serviceClient();
+  const result = await sb.from("post_coins").select(POST_COIN_COLUMNS).eq("post_id", postId).maybeSingle();
+  if (result.error) {
+    if (isMissingTable(result.error)) throw new Error("DB_NOT_READY");
+    throw new Error("POST_COIN_FAILED");
+  }
+  const row = result.data as PostCoinRow | null;
+  if (!row) return null;
+  const [coin] = await assemblePostCoins([row], viewer);
+  return coin ?? null;
+}
+
+export async function getPostCoinById(coinId: string, viewer: string | null): Promise<LivePostCoin | null> {
+  if (!UUID_RE.test(coinId)) return null;
+  const sb = serviceClient();
+  const result = await sb.from("post_coins").select(POST_COIN_COLUMNS).eq("id", coinId).maybeSingle();
+  if (result.error) {
+    if (isMissingTable(result.error)) throw new Error("DB_NOT_READY");
+    throw new Error("POST_COIN_FAILED");
+  }
+  const row = result.data as PostCoinRow | null;
+  if (!row) return null;
+  const [coin] = await assemblePostCoins([row], viewer);
+  return coin ?? null;
+}
+
+export async function tradeLivePostCoin(
+  walletInput: string,
+  coinId: string,
+  side: "buy" | "sell",
+  amountInput: unknown,
+): Promise<LivePostCoinTradeResult> {
+  const wallet = normalizeWalletInput(walletInput);
+  if (!UUID_RE.test(coinId)) throw new Error("COIN_NOT_FOUND");
+  const amount = typeof amountInput === "number" ? amountInput : Number(amountInput);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_COIN_AMOUNT");
+  if (amount > 1_000_000) throw new Error("COIN_AMOUNT_TOO_LARGE");
+  const sb = serviceClient();
+  const result = await sb.rpc("trade_post_coin", {
+    p_trader: wallet,
+    p_coin: coinId,
+    p_side: side,
+    p_amount: amount,
+  });
+  if (result.error) throw new Error(coinErrorCode(result.error));
+  const data = result.data as {
+    side?: string;
+    amount?: unknown;
+    totalMst?: unknown;
+    price?: unknown;
+    holding?: unknown;
+  } | null;
+  if (!data) throw new Error("TRADE_FAILED");
+  return {
+    side: data.side === "sell" ? "sell" : "buy",
+    amount: num(data.amount),
+    totalMst: num(data.totalMst),
+    price: num(data.price),
+    holding: num(data.holding),
+  };
+}
+
+export async function recordPostCoinMint(
+  walletInput: string,
+  coinId: string,
+  input: { status: "minting" | "minted" | "failed"; txHash?: string; tokenAddress?: string; tokenId?: string; error?: string },
+): Promise<LivePostCoin | null> {
+  const wallet = normalizeWalletInput(walletInput);
+  if (!UUID_RE.test(coinId)) throw new Error("COIN_NOT_FOUND");
+  const sb = serviceClient();
+  const owned = await sb.from("post_coins").select("id,post_id").eq("id", coinId).eq("owner_wallet", wallet).maybeSingle();
+  if (owned.error) {
+    if (isMissingTable(owned.error)) throw new Error("DB_NOT_READY");
+    throw new Error("POST_COIN_FAILED");
+  }
+  if (!owned.data) throw new Error("FORBIDDEN");
+  const update: Record<string, string | null> = { mint_status: input.status };
+  if (input.status === "minted") {
+    if (!input.txHash || !input.tokenAddress) throw new Error("MINT_REFERENCE_REQUIRED");
+    const { ACTIVE_NETWORK } = await import("@/lib/mst/config");
+    update.mint_tx_hash = input.txHash;
+    update.token_address = input.tokenAddress;
+    update.token_id = input.tokenId ?? null;
+    update.chain_id = String(ACTIVE_NETWORK.chainId);
+    update.mint_error = null;
+  }
+  if (input.status === "failed") update.mint_error = input.error ?? "MINT_FAILED";
+  const saved = await sb.from("post_coins").update(update).eq("id", coinId);
+  if (saved.error) throw new Error("MINT_STATUS_FAILED");
+  return getPostCoinById(coinId, wallet);
 }

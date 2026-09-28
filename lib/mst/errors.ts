@@ -1,7 +1,7 @@
 // Centralized MST error handling: technical errors → user-friendly messages.
 export type MstErrorCode =
   | "NO_WALLET" | "USER_REJECTED" | "PENDING" | "WRONG_NETWORK" | "NETWORK_SWITCH_REJECTED"
-  | "INSUFFICIENT_FUNDS" | "RPC_ERROR" | "TIMEOUT" | "REVERTED"
+  | "INSUFFICIENT_FUNDS" | "RPC_ERROR" | "TIMEOUT" | "REVERTED" | "MINT_FAILED"
   | "NOT_DEPLOYED" | "BALANCE_ERROR" | "METHOD_UNSUPPORTED" | "SIGN_REJECTED" | "UNKNOWN";
 export class MstError extends Error {
   code: MstErrorCode;
@@ -19,6 +19,7 @@ const FRIENDLY: Record<MstErrorCode, string> = {
   RPC_ERROR: "Unable to connect to MST Blockchain.",
   TIMEOUT: "Transaction confirmation timed out.",
   REVERTED: "Transaction failed.",
+  MINT_FAILED: "Could not read the new coin address.",
   NOT_DEPLOYED: "This feature is not deployed yet.",
   BALANCE_ERROR: "Unable to load balance.",
   UNKNOWN: "Something went wrong.",

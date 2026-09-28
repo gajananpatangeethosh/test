@@ -3,7 +3,7 @@
 // source badge and must never send mock ids to Server Actions.
 
 import { creatorByName, posts, type Post } from "./data";
-import type { FeedPost as DbFeedPost } from "./db/types";
+import type { FeedPost as DbFeedPost, PostCoinInfo } from "./db/types";
 
 export type FeedSource = "live" | "mock";
 
@@ -20,6 +20,7 @@ export type FeedPost = Post & {
   authorWallet: string | null;
   author: FeedAuthor;
   viewerLiked?: boolean;
+  postCoin?: PostCoinInfo;
 };
 
 export function toMockFeedPost(post: Post): FeedPost {
@@ -55,6 +56,7 @@ export function fromLiveFeedPost(post: DbFeedPost): FeedPost {
       wallet: post.authorWallet,
     },
     viewerLiked: post.viewerLiked,
+    postCoin: post.postCoin,
   };
 }
 

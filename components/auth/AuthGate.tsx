@@ -122,7 +122,7 @@ export function AuthGate() {
         <button onClick={() => setDismissed(true)} className="mt-3 text-xs muted hover:text-white">Continue read-only for now</button>
       </> : <>
         <div className="font-semibold text-lg">Create your live profile</div>
-        <p className="muted text-sm mt-1">This writes one row keyed by your wallet. Mock samples stay untouched.</p>
+        <p className="muted text-sm mt-1">This writes one row keyed by your wallet and mints your creator coin in the Echo ledger. Mock samples stay untouched.</p>
         <div className="flex items-center gap-3 mt-4">
           <Avatar name={form.displayName || form.username || "YO"} src={form.avatarUrl || null} size={52} />
           <label className="text-xs muted hover:text-white cursor-pointer">

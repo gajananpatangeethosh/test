@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { PostCard, PostComposer } from "./post";
-import { fromLiveFeedPost, mockFeedPosts, type FeedPost } from "@/lib/feed";
+import { fromLiveFeedPost, type FeedPost } from "@/lib/feed";
 import { getFeedAction } from "@/app/actions/posts";
 import { toggleLikeAction } from "@/app/actions/social";
+import { useApp } from "@/lib/store";
 
 function liveErrorMessage(code: string | null): string | null {
   if (!code) return null;
@@ -15,16 +16,15 @@ function liveErrorMessage(code: string | null): string | null {
 export function Feed({ scope, composer = false, onCreatePost, refreshKey = 0 }: {
   scope: "home" | "explore"; composer?: boolean; onCreatePost?: () => void; refreshKey?: number;
 }) {
-  const mock = useMemo(() => mockFeedPosts(), []);
   const [live, setLive] = useState<FeedPost[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [loadingLive, setLoadingLive] = useState(true);
+  const tradeTick = useApp((s) => s.tradeTick);
   const [likes, setLikes] = useState<Record<string, { liked: boolean; count: number }>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let active = true;
-    setLoadingLive(true); setLiveError(null);
     getFeedAction(30)
       .then((r) => {
         if (!active) return;
@@ -38,7 +38,7 @@ export function Feed({ scope, composer = false, onCreatePost, refreshKey = 0 }: 
       .catch(() => { if (active) setLiveError("FEED_FAILED"); })
       .finally(() => { if (active) setLoadingLive(false); });
     return () => { active = false; };
-  }, [refreshKey]);
+  }, [refreshKey, tradeTick]);
 
   const onToggle = async (id: string) => {
     if (pending[id]) return;
@@ -55,7 +55,6 @@ export function Feed({ scope, composer = false, onCreatePost, refreshKey = 0 }: 
   };
 
   const visibleLive = scope === "explore" ? live.slice(0, 10) : live;
-  const visibleMock = scope === "explore" ? mock.slice(0, 10) : mock;
   const problem = liveErrorMessage(liveError);
 
   return <>
@@ -64,20 +63,20 @@ export function Feed({ scope, composer = false, onCreatePost, refreshKey = 0 }: 
       <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 text-emerald-200 px-2.5 py-0.5 text-[11px] font-medium">Live</span>
       <span className="muted text-xs">{loadingLive ? "Loading live posts…" : `${visibleLive.length} live posts`}</span>
     </div>
-    {problem && <div className="card p-4 mb-3 text-sm muted">{problem} Mock samples are below.</div>}
+    {problem && scope === "explore" && <div className="card p-4 mb-3 text-sm muted">{problem}</div>}
     {visibleLive.map((p) => <PostCard key={p.id} post={p} like={{
       liked: likes[p.id]?.liked ?? p.viewerLiked ?? false,
       count: likes[p.id]?.count ?? p.likes,
       pending: !!pending[p.id],
       onToggle: (id) => void onToggle(id),
     }} />)}
-    {!loadingLive && visibleLive.length === 0 && !problem && (
+    {scope === "home" && !loadingLive && visibleLive.length === 0 && (
+      <div className="card p-4 text-sm muted">
+        {problem ?? "No live posts yet. Publish the first one from Create."}
+      </div>
+    )}
+    {!loadingLive && visibleLive.length === 0 && scope === "explore" && !problem && (
       <div className="card p-4 mb-3 text-sm muted">No live posts yet. Publish the first one from Create.</div>
     )}
-    <div className="flex items-center gap-2 px-1 mt-4 mb-2">
-      <span className="rounded-full border border-amber-300/30 bg-amber-300/10 text-amber-200 px-2.5 py-0.5 text-[11px] font-medium">Mock sample</span>
-      <span className="muted text-xs">{visibleMock.length} demo posts · likes here never leave this browser</span>
-    </div>
-    {visibleMock.map((p) => <PostCard key={p.id} post={p} />)}
   </>;
 }

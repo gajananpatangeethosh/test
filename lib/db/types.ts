@@ -16,6 +16,19 @@ export type ProfilePublic = {
 
 export type ProfilePrivate = ProfilePublic & { phone: string | null };
 
+export type PostCoinInfo = {
+  id: string;
+  postId: string;
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  mintStatus: MintStatus;
+  tokenAddress: string | null;
+  ownerWallet: string;
+  viewerHolding: number;
+};
+
 export type FeedPost = {
   source: "live";
   id: string;
@@ -34,6 +47,37 @@ export type FeedPost = {
   authorAvatarUrl: string | null;
   authorVerified: boolean;
   viewerLiked: boolean;
+  postCoin?: PostCoinInfo;
+};
+
+export type LivePostCoin = {
+  id: string;
+  postId: string;
+  name: string;
+  symbol: string;
+  ownerWallet: string;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  holders: number;
+  reserveMst: number;
+  totalSupply: number;
+  mintStatus: MintStatus;
+  mintTxHash: string | null;
+  mintError: string | null;
+  chainId: string | null;
+  tokenAddress: string | null;
+  settlement: Settlement;
+  viewerHolding: number;
+  createdAt: string;
+};
+
+export type LivePostCoinTradeResult = {
+  side: "buy" | "sell";
+  amount: number;
+  totalMst: number;
+  price: number;
+  holding: number;
 };
 
 export type DbComment = {
@@ -46,6 +90,59 @@ export type DbComment = {
   authorDisplayName: string;
   authorAvatarUrl: string | null;
   mine: boolean;
+};
+
+export type MintStatus = "pending" | "minting" | "minted" | "failed";
+export type Settlement = "offchain" | "onchain";
+
+/** One creator coin. marketCap = price x initial supply, see dal.ts. */
+export type LiveCoin = {
+  id: string;
+  name: string;
+  symbol: string;
+  ownerWallet: string;
+  creatorUsername: string;
+  creatorDisplayName: string;
+  creatorAvatarUrl: string | null;
+  creatorVerified: boolean;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  marketCap: number;
+  liquidity: number;
+  holders: number;
+  spark: number[];
+  reserveMst: number;
+  poolSupply: number;
+  totalSupply: number;
+  mintStatus: MintStatus;
+  mintTxHash: string | null;
+  mintError: string | null;
+  chainId: string | null;
+  tokenAddress: string | null;
+  tokenId: string | null;
+  settlement: Settlement;
+  viewerHolding: number;
+  createdAt: string;
+};
+
+export type LiveCoinTrade = {
+  id: string;
+  side: "buy" | "sell";
+  amount: number;
+  price: number;
+  totalMst: number;
+  settlement: Settlement;
+  createdAt: string;
+  traderUsername: string;
+};
+
+export type LiveCoinTradeResult = {
+  side: "buy" | "sell";
+  amount: number;
+  totalMst: number;
+  price: number;
+  holding: number;
 };
 
 export type OrbitConversation = {

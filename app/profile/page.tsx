@@ -12,7 +12,7 @@ export default function ProfileRedirect() {
 
   useEffect(() => {
     let live = true;
-    if (!address) { setChecked(true); return; }
+    if (!address) { void Promise.resolve().then(() => { if (live) setChecked(true); }); return; }
     fetch("/api/auth/me", { cache: "no-store" })
       .then(async (r) => {
         const me = (await r.json()) as { profile?: { username?: string } | null };

@@ -3,6 +3,7 @@ import { AppShell } from "@/components/shell";
 import { Card, Button, Avatar } from "@/components/ui";
 import { CoinChart } from "@/components/chart";
 import { holdings, coinById } from "@/lib/data";
+import { mockMarketCoinById } from "@/lib/markets";
 import { useApp } from "@/lib/store";
 import { useWallet, shortAddress } from "@/components/mst/wallet-provider";
 import { BalanceDisplay, ExplorerLink, NetworkIndicator, NetworkSwitchButton, RefreshBalanceButton } from "@/components/mst/wallet-ui";
@@ -33,7 +34,7 @@ export default function WalletPage() {
         <div className="grid grid-cols-4 gap-2 mt-4">
           {[["Buy", Plus], ["Sell", Minus], ["Send", Send], ["Receive", Download]].map(([label, Icon]) => {
             const I = Icon as typeof Plus;
-            return <button key={label as string} onClick={() => openTrade("gajanan", label === "Sell" ? "sell" : "buy")}
+            return <button key={label as string} onClick={() => { const target = mockMarketCoinById("gajanan"); if (target) openTrade(target, label === "Sell" ? "sell" : "buy"); }}
               className="flex flex-col items-center gap-1.5 rounded-xl border border-white/10 py-3 text-xs hover:border-white/25"><I size={16} />{label as string}</button>;
           })}
         </div>
@@ -46,7 +47,7 @@ export default function WalletPage() {
         <div className="font-semibold mb-1">Market watchlist</div>
         <p className="muted text-xs mb-2">Off-chain preview — on-chain token balances unlock with deployed coin contracts.</p>
         {rows.map((r) => { const up = r.coin.price >= r.avgBuy; return (
-          <button key={r.coinId} onClick={() => openTrade(r.coinId, "sell")} className="w-full flex items-center gap-3 py-3 border-b border-white/[.05] last:border-0 hover:bg-white/[.02] rounded-lg px-1">
+          <button key={r.coinId} onClick={() => { const target = mockMarketCoinById(r.coinId); if (target) openTrade(target, "sell"); }} className="w-full flex items-center gap-3 py-3 border-b border-white/[.05] last:border-0 hover:bg-white/[.02] rounded-lg px-1">
             <Avatar name={r.coin.name} size={38} />
             <div className="text-left"><div className="font-medium text-sm">{r.coin.symbol}</div><div className="muted text-xs">{fmtMst(r.coin.price)} MST</div></div>
             <div className="ml-auto text-right"><div className={`text-xs ${up ? "tick-up" : "tick-down"}`}>{up ? "+" : ""}{(((r.coin.price - r.avgBuy) / r.avgBuy) * 100).toFixed(1)}% 24h</div></div>

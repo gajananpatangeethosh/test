@@ -10,7 +10,10 @@ export default function Home() {
   return <AppShell right={<><PortfolioCard /><ActivityTimeline limit={5} /></>}>
     <div className="py-4 px-3 sm:px-0">
       <Feed scope="home" composer onCreatePost={() => setCreateOpen(true)} refreshKey={feedKey} />
-      {createOpen && <CreateModal onClose={() => setCreateOpen(false)} onPublished={() => { setCreateOpen(false); setFeedKey((k) => k + 1); }} />}
+      {createOpen && <CreateModal
+        onClose={() => setCreateOpen(false)}
+        onPublished={() => { setCreateOpen(false); setFeedKey((k) => k + 1); }}
+      />}
     </div>
   </AppShell>;
 }
