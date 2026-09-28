@@ -20,7 +20,6 @@ const JUMPS: { href: string; label: string; hint: string }[] = [
   { href: "/explore", label: "Explore", hint: "Browse everything" },
   { href: "/markets", label: "Markets", hint: "Gainers, volume, new coins" },
   { href: "/orbit", label: "Orbit", hint: "Ask the AI companion" },
-  { href: "/create", label: "Create", hint: "Mint a creator or post coin" },
   { href: "/wallet", label: "Wallet", hint: "Balance and activity" },
 ];
 

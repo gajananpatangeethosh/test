@@ -12,7 +12,9 @@ function liveErrorMessage(code: string | null): string | null {
   return "Live feed is temporarily unavailable.";
 }
 
-export function Feed({ scope, composer = false }: { scope: "home" | "explore"; composer?: boolean }) {
+export function Feed({ scope, composer = false, onCreatePost, refreshKey = 0 }: {
+  scope: "home" | "explore"; composer?: boolean; onCreatePost?: () => void; refreshKey?: number;
+}) {
   const mock = useMemo(() => mockFeedPosts(), []);
   const [live, setLive] = useState<FeedPost[]>([]);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -22,6 +24,7 @@ export function Feed({ scope, composer = false }: { scope: "home" | "explore"; c
 
   useEffect(() => {
     let active = true;
+    setLoadingLive(true); setLiveError(null);
     getFeedAction(30)
       .then((r) => {
         if (!active) return;
@@ -35,7 +38,7 @@ export function Feed({ scope, composer = false }: { scope: "home" | "explore"; c
       .catch(() => { if (active) setLiveError("FEED_FAILED"); })
       .finally(() => { if (active) setLoadingLive(false); });
     return () => { active = false; };
-  }, []);
+  }, [refreshKey]);
 
   const onToggle = async (id: string) => {
     if (pending[id]) return;
@@ -56,7 +59,7 @@ export function Feed({ scope, composer = false }: { scope: "home" | "explore"; c
   const problem = liveErrorMessage(liveError);
 
   return <>
-    {composer && <PostComposer />}
+    {composer && <PostComposer onCreate={onCreatePost ?? (() => undefined)} />}
     <div className="flex items-center gap-2 px-1 mt-1 mb-2">
       <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 text-emerald-200 px-2.5 py-0.5 text-[11px] font-medium">Live</span>
       <span className="muted text-xs">{loadingLive ? "Loading live posts…" : `${visibleLive.length} live posts`}</span>

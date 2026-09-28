@@ -250,7 +250,7 @@ export function FinalCta() {
       <p className="muted mt-4 max-w-md mx-auto">Join Echo on MST Testnet. Your first collect is one click away.</p>
       <div className="mt-7 flex flex-wrap justify-center gap-3">
         <Link href="/home" className="inline-flex items-center gap-1.5 rounded-full bg-white text-black text-sm font-medium px-7 py-3 hover:bg-teal-100 transition">Launch app<ArrowRight size={15} /></Link>
-        <Link href="/create" className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-7 py-3 text-sm hover:border-white/30 transition">Create first</Link>
+        <Link href="/home" className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-7 py-3 text-sm hover:border-white/30 transition">Create first</Link>
       </div>
     </Reveal>
   </section>;
@@ -273,7 +273,7 @@ export function LandingFooter() {
         </div></div>
       <div><div className="text-sm font-medium mb-3">Create</div>
         <div className="space-y-2.5 text-sm muted">
-          <Link href="/create" className="block hover:text-white transition">New post</Link>
+          <Link href="/home" className="block hover:text-white transition">New post</Link>
           <Link href="/wallet" className="block hover:text-white transition">Wallet</Link>
         </div></div>
       <div><div className="text-sm font-medium mb-3">Network</div>

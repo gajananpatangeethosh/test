@@ -5,20 +5,18 @@ import { motion } from "framer-motion";
 import { coins } from "@/lib/data";
 import { sourceLabel, type FeedPost } from "@/lib/feed";
 import { useApp } from "@/lib/store";
-import { useWallet } from "./mst/wallet-provider";
 import { Avatar, Badge } from "./ui";
 import { fmtMst, timeAgo, fmtNum, cn } from "@/lib/utils";
 
-export function PostComposer() {
-  const { isConnected, connect } = useWallet();
+export function PostComposer({ onCreate }: { onCreate: () => void }) {
   return <div className="card p-4 mb-4">
     <div className="flex gap-3">
       <Avatar name="YO" />
-      <input placeholder="Share something on MST…" className="flex-1 bg-white/[.04] border border-white/10 rounded-full px-4 text-sm outline-none placeholder:text-[#6b7280] focus:border-teal-300/40" />
+      <input readOnly onClick={onCreate} placeholder="Share something on MST…" className="flex-1 bg-white/[.04] border border-white/10 rounded-full px-4 text-sm outline-none placeholder:text-[#6b7280] focus:border-teal-300/40 cursor-pointer" />
     </div>
     <div className="flex justify-end mt-3">
-      <Link href="/create" onClick={(e) => { if (!isConnected) { e.preventDefault(); void connect(); } }}
-        className="rounded-full bg-white text-black text-sm font-medium px-5 py-2">Create</Link>
+      <button onClick={onCreate}
+        className="rounded-full bg-white text-black text-sm font-medium px-5 py-2">Create</button>
     </div>
   </div>;
 }

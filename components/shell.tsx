@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Home, Compass, CandlestickChart, PlusSquare, User, Search, Wallet, Orbit } from "lucide-react";
+import { Home, Compass, CandlestickChart, User, Search, Wallet, Orbit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WalletButton } from "./mst/wallet-ui";
 import { useWallet } from "./mst/wallet-provider";
@@ -14,7 +14,6 @@ const nav = [
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/orbit", label: "Orbit", icon: Orbit },
   { href: "/markets", label: "Markets", icon: CandlestickChart },
-  { href: "/create", label: "Create", icon: PlusSquare },
   { href: "/wallet", label: "Wallet", icon: Wallet },
   { href: "/profile", label: "Profile", icon: User },
 ];
@@ -44,12 +43,11 @@ export function MobileNav() {
   { href: "/home", label: "Home", icon: Home },
     { href: "/explore", label: "Explore", icon: Compass },
     { href: "/orbit", label: "Orbit", icon: Orbit },
-    { href: "/create", label: "Create", icon: PlusSquare },
     { href: "/markets", label: "Markets", icon: CandlestickChart },
     { href: "/profile", label: "Profile", icon: User },
   ];
   return <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-white/[.07] bg-[#0c0d10]/95 backdrop-blur-xl">
-    <div className="grid grid-cols-6 py-2">{items.map((n) => <Link key={n.label} href={n.href}
+    <div className="grid grid-cols-5 py-2">{items.map((n) => <Link key={n.label} href={n.href}
       className={cn("flex flex-col items-center gap-1 py-1 text-[10px]", path === n.href ? "text-white" : "text-[#6b7280]")}>
       <n.icon size={21} />{n.label}</Link>)}</div>
   </nav>;
