@@ -81,6 +81,33 @@ async function requestAccounts(): Promise<{ address: string; chainId: number; pr
   if (!Number.isFinite(chainId)) throw new MstError("RPC_ERROR", "Unable to connect to MST Blockchain.");
   return { address: list[0], chainId, provider };
 }
+
+/**
+ * Sign an app message with personal_sign. The message is hex-encoded because
+ * wallets expect hex payloads; the server decodes it back to UTF-8 before
+ * ethers.verifyMessage. Private keys never leave the wallet.
+ */
+export async function signAppMessage(message: string, address?: string): Promise<{ address: string; signature: string }> {
+  const provider = getInjectedProviderSync() ?? await resolveProvider(2500);
+  if (!provider) throw new MstError("NO_WALLET", NOT_DETECTED);
+  setActiveProvider(provider);
+  let from = address ?? "";
+  if (!from) {
+    const accounts = (await provider.request({ method: "eth_accounts" })) as string[];
+    from = accounts?.[0] ?? "";
+  }
+  if (!from) throw new MstError("NO_WALLET", "No account was shared. Unlock BridgeKey and approve the connection, then try again.");
+  const hex = `0x${Array.from(new TextEncoder().encode(message)).map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+  try {
+    const signature = (await provider.request({ method: "personal_sign", params: [hex, from] })) as string;
+    if (!signature) throw new MstError("SIGN_REJECTED", "The wallet did not return a signature.");
+    return { address: from, signature };
+  } catch (err) {
+    if (err instanceof MstError) throw err;
+    if (isRejection(err)) throw new MstError("USER_REJECTED", "Signature request rejected in your wallet. Press Sign in again to retry.");
+    throw err;
+  }
+}
 // EIP-1193 has no "disconnect": disconnecting = forgetting the session locally.
 export async function disconnectWallet(): Promise<void> {
   setActiveProvider(null);

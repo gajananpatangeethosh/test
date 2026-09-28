@@ -8,6 +8,7 @@ import { CoinChart } from "@/components/chart";
 import { PostCard } from "@/components/post";
 import { PortfolioCard, ActivityTimeline } from "@/components/wallet";
 import { coinById, creatorByName, posts, recentTrades, coins } from "@/lib/data";
+import { toMockFeedPost } from "@/lib/feed";
 import { useApp } from "@/lib/store";
 import { fmtMst, fmtNum, timeAgo } from "@/lib/utils";
 export default function CoinPage({ params }: { params: Promise<{ id: string }> }) {
@@ -49,7 +50,7 @@ export default function CoinPage({ params }: { params: Promise<{ id: string }> }
           <span className="muted text-xs w-20 text-right">{timeAgo(t.time)}</span></div>)}
       </Card>
       {related.length > 0 && <div><div className="font-semibold px-1 mb-2">Related posts</div>
-        {related.map((p) => <PostCard key={p.id} post={p} />)}</div>}
+        {related.map((p) => <PostCard key={p.id} post={toMockFeedPost(p)} />)}</div>}
       <div><div className="font-semibold px-1 mb-2">More coins</div>
         <div className="grid grid-cols-2 gap-2">{coins.filter((c) => c.id !== coin.id).slice(0, 4).map((c) => (
           <Link key={c.id} href={`/coins/${c.id}`} className="card card-hover p-4"><div className="font-semibold text-sm">{c.symbol}</div>

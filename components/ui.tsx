@@ -16,7 +16,14 @@ export function Button({ className, ...p }: ButtonHTMLAttributes<HTMLButtonEleme
 export function Card({ className, children }: { className?: string; children: React.ReactNode }) {
   return <div className={cn("card", className)}>{children}</div>;
 }
-export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 40, src }: { name: string; size?: number; src?: string | null }) {
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt={name} width={size} height={size} loading="lazy"
+        className="rounded-full object-cover shrink-0 border border-white/15" style={{ width: size, height: size }} />
+    );
+  }
   const initials = name.slice(0, 2).toUpperCase();
   return <div className="rounded-full flex items-center justify-center font-semibold shrink-0"
     style={{ width: size, height: size, fontSize: size * 0.34, background: `linear-gradient(135deg,#1d2b28,#14161a)`, border: "1px solid rgba(255,255,255,.12)", color: "#5eead4" }}>{initials}</div>;

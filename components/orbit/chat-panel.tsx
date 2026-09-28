@@ -23,6 +23,10 @@ import {
   type PuterModel, type PuterRatio, type PuterUser,
 } from "@/lib/orbit/puter";
 import { openrouterImage, type ImageEngine } from "@/lib/orbit/image";
+import {
+  appendOrbitMessageAction,
+  getOrbitConversationAction,
+} from "@/app/actions/orbit";
 
 // ── Thread model ─────────────────────────────────────────────────────────────
 // One conversation holds all three capabilities. Text bubbles go to the LLM;
@@ -105,9 +109,12 @@ function renderBody(text: string) {
   });
 }
 
-export default function OrbitChat() {
+export default function OrbitChat({ conversationId = null }: { conversationId?: string | null }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  // Server persistence is active when a conversation id is provided and the
+  // history load succeeds. Otherwise this is the legacy local-only thread.
+  const [serverThread, setServerThread] = useState(false);
   const [mode, setMode] = useState<Mode>("chat");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -196,21 +203,40 @@ export default function OrbitChat() {
     if (rec) { try { rec.abort(); } catch { /* ignore */ } }
   }, []);
 
-  // Only text bubbles persist. Image data URLs are megabytes and a transfer
-  // bubble is a receipt, not conversation — reloading restores the dialogue.
+  // History source of truth: server conversation when available, otherwise the
+  // legacy localStorage thread. Image data URLs are megabytes and a transfer
+  // bubble is a receipt, not conversation — only text persists either way.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    try {
-      const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
-      if (Array.isArray(raw)) setMsgs(raw.filter((m): m is TextMsg => m?.kind === "text"));
-    } catch { /* ignore */ }
+    let live = true;
+    setHydrated(false); setServerThread(false);
+    if (conversationId) {
+      getOrbitConversationAction(conversationId).then((r) => {
+        if (!live) return;
+        if (r.ok) {
+          setMsgs(r.messages.map((m) => ({ kind: "text", role: m.role, content: m.content }) as TextMsg));
+          setServerThread(true);
+        } else {
+          loadLocal();
+        }
+        setHydrated(true);
+      }).catch(() => { if (live) { loadLocal(); setHydrated(true); } });
+      return () => { live = false; };
+    }
+    loadLocal();
     setHydrated(true);
-  }, []);
+    function loadLocal() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+        if (Array.isArray(raw)) setMsgs(raw.filter((m): m is TextMsg => m?.kind === "text"));
+      } catch { /* ignore */ }
+    }
+  }, [conversationId]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || serverThread) return;
     try { localStorage.setItem(LS_KEY, JSON.stringify(msgs.filter(isText).slice(-50))); } catch { /* ignore */ }
-  }, [hydrated, msgs]);
+  }, [hydrated, msgs, serverThread]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
 
   // Read which Puter account this page is on when Post mode opens. Never prompts:
@@ -247,13 +273,22 @@ export default function OrbitChat() {
     setMsgs((m) => m.map((x) => ("id" in x && x.id === id ? ({ ...x, ...next } as Msg) : x)));
 
   // ── Chat ──────────────────────────────────────────────────────────────────
+  // Fire-and-forget server persistence. Failures stay silent so a signed-out
+  // or unmigrated backend never breaks the chat itself.
+  const persist = (role: "user" | "assistant", content: string, model?: string) => {
+    if (!serverThread || !conversationId || !content.trim()) return;
+    void appendOrbitMessageAction(conversationId, { role, content, model }).catch(() => undefined);
+  };
+
   const sendChat = async (text: string) => {
     const content = text.trim();
     if (!content || busy) return;
     setError("");
     const next = [...msgs, { kind: "text", role: "user", content } as TextMsg];
     setMsgs(next); setInput(""); setBusy(true);
+    persist("user", content);
     abort.current = new AbortController();
+    let modelUsed: string | undefined;
     try {
       const res = await fetch("/api/orbit", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -264,6 +299,7 @@ export default function OrbitChat() {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { message?: string }).message || `Request failed (${res.status})`);
       }
+      modelUsed = res.headers.get("X-Orbit-Model") ?? undefined;
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let acc = "", buf = "";
@@ -294,6 +330,7 @@ export default function OrbitChat() {
           return c;
         });
       }
+      persist("assistant", acc, modelUsed);
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         setMsgs((m) => {
@@ -315,6 +352,7 @@ export default function OrbitChat() {
       { kind: "text", role: "user", content: p },
       { kind: "image", id, prompt: p, src: null, caption: "", status: "loading" } as ImageMsg,
     ]);
+    persist("user", p);
     try {
       // A page that has never identified itself runs on Puter's throwaway guest
       // session, which has no credits — and reports that as "no credits
@@ -391,6 +429,7 @@ export default function OrbitChat() {
     setError(""); setInput(""); setBusy(true);
     const id = newId();
     setMsgs((m) => [...m, { kind: "text", role: "user", content: p }]);
+    persist("user", p);
     try {
       const res = await fetch("/api/orbit/transfer", {
         method: "POST", headers: { "Content-Type": "application/json" },

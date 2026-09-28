@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { Heart, MessageCircle, Repeat2, Coins, CandlestickChart, BadgeCheck } from "lucide-react";
 import { motion } from "framer-motion";
-import { Post, creatorByName, coinById } from "@/lib/data";
+import { coins } from "@/lib/data";
+import { sourceLabel, type FeedPost } from "@/lib/feed";
 import { useApp } from "@/lib/store";
 import { useWallet } from "./mst/wallet-provider";
 import { Avatar, Badge } from "./ui";
@@ -22,20 +23,33 @@ export function PostComposer() {
   </div>;
 }
 
-export function PostCard({ post }: { post: Post }) {
-  const c = creatorByName(post.creator);
-  const { likes, toggleLike, openTrade, openCollect } = useApp();
-  const liked = !!likes[post.id];
-  const coin = post.coinId ? coinById(post.coinId) : null;
+export function PostCard({ post, like }: {
+  post: FeedPost;
+  like?: { liked: boolean; count: number; pending?: boolean; onToggle: (postId: string) => void };
+}) {
+  const c = post.author;
+  const store = useApp();
+  const storeLiked = !!store.likes[post.id];
+  const liked = like ? like.liked : storeLiked;
+  const likeCount = like ? like.count : post.likes + (storeLiked ? 1 : 0);
+  const coin = post.coinId ? coins.find((k) => k.id === post.coinId) ?? null : null;
+  const toggle = () => {
+    if (post.source === "live" && like) like.onToggle(post.id);
+    else if (post.source === "mock") store.toggleLike(post.id);
+  };
+  const { openTrade, openCollect } = store;
   return <motion.article initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
     className="card card-hover p-4 sm:p-5 mb-3">
     <div className="flex items-center gap-3">
-      <Link href={`/creator/${c.username}`}><Avatar name={c.name} /></Link>
+      <Link href={`/creator/${c.username}`}><Avatar name={c.displayName} src={c.avatarUrl} /></Link>
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
-          <Link href={`/creator/${c.username}`} className="font-semibold text-[15px] hover:underline">{c.name}</Link>
+          <Link href={`/creator/${c.username}`} className="font-semibold text-[15px] hover:underline">{c.displayName}</Link>
           {c.verified && <BadgeCheck size={15} className="text-teal-300" />}
           <span className="muted text-sm">· {timeAgo(post.time)}</span>
+          <span className={cn("ml-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+            post.source === "live" ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200" : "border-amber-300/30 bg-amber-300/10 text-amber-200")}>
+            {sourceLabel(post.source)}</span>
         </div>
         <div className="muted text-sm">@{c.username}</div>
       </div>
@@ -45,8 +59,8 @@ export function PostCard({ post }: { post: Post }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={post.image} alt="" className="w-full object-cover max-h-[420px]" loading="lazy" /></div>}
     <div className="mt-3 flex items-center gap-6 muted text-sm">
-      <button onClick={() => toggleLike(post.id)} className={cn("flex items-center gap-1.5 hover:text-white", liked && "text-rose-400")}>
-        <Heart size={18} fill={liked ? "currentColor" : "none"} />{post.likes + (liked ? 1 : 0)}</button>
+      <button onClick={toggle} disabled={like?.pending} className={cn("flex items-center gap-1.5 hover:text-white disabled:opacity-60", liked && "text-rose-400")}>
+        <Heart size={18} fill={liked ? "currentColor" : "none"} />{likeCount}</button>
       <span className="flex items-center gap-1.5"><MessageCircle size={18} />{post.comments}</span>
       <span className="flex items-center gap-1.5"><Repeat2 size={18} />{post.shares}</span>
       <span className="ml-auto muted text-xs">{fmtNum(post.collects)} collects</span>

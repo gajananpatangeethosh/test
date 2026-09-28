@@ -2,7 +2,7 @@
 export type MstErrorCode =
   | "NO_WALLET" | "USER_REJECTED" | "PENDING" | "WRONG_NETWORK" | "NETWORK_SWITCH_REJECTED"
   | "INSUFFICIENT_FUNDS" | "RPC_ERROR" | "TIMEOUT" | "REVERTED"
-  | "NOT_DEPLOYED" | "BALANCE_ERROR" | "METHOD_UNSUPPORTED" | "UNKNOWN";
+  | "NOT_DEPLOYED" | "BALANCE_ERROR" | "METHOD_UNSUPPORTED" | "SIGN_REJECTED" | "UNKNOWN";
 export class MstError extends Error {
   code: MstErrorCode;
   constructor(code: MstErrorCode, message: string) { super(message); this.name = "MstError"; this.code = code; }
@@ -12,6 +12,7 @@ const FRIENDLY: Record<MstErrorCode, string> = {
   USER_REJECTED: "Wallet rejected the transaction.",
   PENDING: "A wallet request is already pending. Open BridgeKey and respond to it, then try again.",
   METHOD_UNSUPPORTED: "Wallet did not understand the request.",
+  SIGN_REJECTED: "The wallet did not return a signature.",
   WRONG_NETWORK: "Please connect to MST Blockchain.",
   NETWORK_SWITCH_REJECTED: "Network switch was rejected.",
   INSUFFICIENT_FUNDS: "Insufficient MST balance.",
@@ -25,7 +26,7 @@ const FRIENDLY: Record<MstErrorCode, string> = {
 export const friendlyMessage = (code: MstErrorCode) => FRIENDLY[code];
 // Outcomes the user caused or chose — surfaced in the UI, never logged as errors.
 const EXPECTED: MstErrorCode[] = ["USER_REJECTED", "PENDING", "NETWORK_SWITCH_REJECTED", "WRONG_NETWORK",
-  "METHOD_UNSUPPORTED", "NOT_DEPLOYED", "INSUFFICIENT_FUNDS"];
+  "METHOD_UNSUPPORTED", "NOT_DEPLOYED", "INSUFFICIENT_FUNDS", "SIGN_REJECTED"];
 export function toMstError(err: unknown): MstError {
   if (err instanceof MstError) return err;
   const mapped = classify(err);

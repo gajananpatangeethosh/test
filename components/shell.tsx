@@ -16,7 +16,7 @@ const nav = [
   { href: "/markets", label: "Markets", icon: CandlestickChart },
   { href: "/create", label: "Create", icon: PlusSquare },
   { href: "/wallet", label: "Wallet", icon: Wallet },
-  { href: "/creator/gajanan", label: "Profile", icon: User },
+  { href: "/profile", label: "Profile", icon: User },
 ];
 export function Sidebar() {
   const path = usePathname();
@@ -46,7 +46,7 @@ export function MobileNav() {
     { href: "/orbit", label: "Orbit", icon: Orbit },
     { href: "/create", label: "Create", icon: PlusSquare },
     { href: "/markets", label: "Markets", icon: CandlestickChart },
-    { href: "/creator/gajanan", label: "Profile", icon: User },
+    { href: "/profile", label: "Profile", icon: User },
   ];
   return <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-white/[.07] bg-[#0c0d10]/95 backdrop-blur-xl">
     <div className="grid grid-cols-6 py-2">{items.map((n) => <Link key={n.label} href={n.href}
