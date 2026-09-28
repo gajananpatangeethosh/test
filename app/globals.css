@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-base-950: #08090b;
+  --color-base-900: #0c0d10;
+  --color-base-850: #121316;
+  --color-base-800: #17181d;
+  --color-base-700: #23252c;
+  --color-base-600: #343743;
+  --color-accent-400: #5eead4;
+  --color-accent-500: #2dd4bf;
+  --color-accent-600: #0d9488;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root { color-scheme: dark; }
+html, body { height: 100%; }
+body {
+  background: #08090b;
+  color: #eceef1;
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+::selection { background: rgba(45,212,191,.25); }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { scrollbar-width: none; }
+.card {
+  background: #121316;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 16px;
+}
+.card-hover { transition: border-color .2s, transform .2s; }
+.card-hover:hover { border-color: rgba(255,255,255,.14); }
+.muted { color: #9aa0ab; }
+.tick-up { color: #4ade80; }
+.tick-down { color: #f87171; }
+html { scroll-behavior: smooth; }
+@keyframes mstora-ticker {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.animate-ticker { animation: mstora-ticker 36s linear infinite; }
+.animate-ticker:hover { animation-play-state: paused; }
+.landing-grid {
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 30%, transparent 75%);
+}
