@@ -24,6 +24,42 @@ const ADDR_RE = /^0x[0-9a-fA-F]{40}$/;
 // Plain positive decimal. No sign, no exponent, no hex, no separators, max 18 dp.
 const DECIMAL_RE = /^\d+(?:\.\d{1,18})?$/;
 
+// Exact, case-insensitive, and refuses to match a prefix of a longer hex run
+// (so a 64-char tx hash is never mistaken for an address).
+const ADDRESS_SCAN = /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g;
+// Any hex-looking token, including a truncated address the user fat-fingered.
+const ANY_HEX = /0x[0-9a-fA-F]*/g;
+
+/**
+ * Direct-send is the default. The wallet prompt is the confirmation step.
+ * Set to "1" to put a review step in the thread before the wallet is opened.
+ */
+export const REQUIRE_CONFIRM = process.env.NEXT_PUBLIC_ORBIT_REQUIRE_CONFIRM === "1";
+
+/** Pull every plausible address out of free text, deterministically. */
+export function extractAddresses(text: string): string[] {
+  const found = text.match(ADDRESS_SCAN) ?? [];
+  return Array.from(new Set(found.map((a) => a.toLowerCase())));
+}
+
+/**
+ * Pull every plausible amount out of free text, deterministically.
+ *
+ * Hex tokens (addresses and truncated ones) are stripped first, otherwise the
+ * 40 digits of an address look like a number. Thousands separators are folded
+ * so "1,000" reads as 1000. Deduplicated, positive only.
+ *
+ * This exists so the amount the wallet shows is the amount the user typed, not
+ * something the model re-emitted.
+ */
+export function extractAmounts(text: string): string[] {
+  const stripped = text
+    .replace(ANY_HEX, " ")
+    .replace(/,(?=\d{3}\b)/g, "");
+  const found = stripped.match(/\d+(?:\.\d+)?/g) ?? [];
+  return Array.from(new Set(found)).filter((n) => Number(n) > 0);
+}
+
 export type TxCheck =
   | { ok: true; to: string; amount: string; value: string; memo: string }
   | { ok: false; error: string };
