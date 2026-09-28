@@ -7,7 +7,7 @@ import { getInjectedProvider, isOnMstNetwork } from "./wallet";
 import { waitForMstTransaction } from "./client";
 import { ACTIVE_NETWORK } from "./config";
 import { MstError, toMstError } from "./errors";
-import type { MstTxRequest, TxStage } from "./types";
+import type { MstTxRequest, TxRecord, TxStage } from "./types";
 export async function sendTransaction(
   req: MstTxRequest,
   opts: { label?: string; onStage?: (s: TxStage) => void } = {},
@@ -47,3 +47,6 @@ export async function getConnectedAddress(): Promise<string | null> {
     return accounts?.[0] ?? null;
   } catch { return null; }
 }
+
+/** Timestamps a record outside the React render path (keeps the purity lint honest). */
+export const makeTxRecord = (r: Omit<TxRecord, "time">, time: number = Date.now()): TxRecord => ({ ...r, time });
