@@ -25,8 +25,12 @@ export type PostCoinInfo = {
   change24h: number;
   mintStatus: MintStatus;
   tokenAddress: string | null;
+  /** ERC-721 token id in the PostNFT collection (Plan C). */
+  nftTokenId: string | null;
   ownerWallet: string;
   viewerHolding: number;
+  reserveMst?: number;
+  poolSupply?: number;
 };
 
 export type FeedPost = {
@@ -67,6 +71,7 @@ export type LivePostCoin = {
   mintError: string | null;
   chainId: string | null;
   tokenAddress: string | null;
+  nftTokenId: string | null;
   settlement: Settlement;
   viewerHolding: number;
   createdAt: string;
@@ -95,7 +100,7 @@ export type DbComment = {
 export type MintStatus = "pending" | "minting" | "minted" | "failed";
 export type Settlement = "offchain" | "onchain";
 
-/** One creator coin. marketCap = price x initial supply, see dal.ts. */
+/** One creator coin. marketCap = price x initial supply (10k units), see dal.ts. */
 export type LiveCoin = {
   id: string;
   name: string;

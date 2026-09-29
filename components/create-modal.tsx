@@ -5,7 +5,7 @@ import { Button, Modal, Badge } from "./ui";
 import { TransactionStatus } from "./mst/tx-status";
 import { NetworkSwitchButton } from "./mst/wallet-ui";
 import { useWallet } from "./mst/wallet-provider";
-import { createCreatorCoin, createPostCoin } from "@/lib/mst/contracts";
+import { createCreatorCoin, createPostAsset, hasPostNftMinter } from "@/lib/mst/contracts";
 import { toMstError } from "@/lib/mst/errors";
 import { cn, fmtMst } from "@/lib/utils";
 import { createPostAction } from "@/app/actions/posts";
@@ -75,7 +75,7 @@ export function CreateModal({ onClose, onPublished }: { onClose: () => void; onP
         setLocal("chain"); setStage("preparing");
         await recordPostCoinMintAction({ coinId: postCoin.id, status: "minting" });
         try {
-          const { hash: txHash, coin: tokenAddress } = await createPostCoin({
+          const { hash: txHash, coin: tokenAddress, nftTokenId } = await createPostAsset({
             postId: r.post.id,
             name: postCoin.name,
             symbol: postCoin.symbol,
@@ -83,12 +83,19 @@ export function CreateModal({ onClose, onPublished }: { onClose: () => void; onP
             seedMst: "1",
             onStage: setStage,
           });
-          addTx({ hash: txHash, from: address, label: `Mint ${postCoin.symbol}`, time: Date.now(), chainId: chainId ?? 0 });
+          addTx({
+            hash: txHash,
+            from: address,
+            label: nftTokenId ? `Mint NFT + ${postCoin.symbol}` : `Mint ${postCoin.symbol}`,
+            time: Date.now(),
+            chainId: chainId ?? 0,
+          });
           await recordPostCoinMintAction({
             coinId: postCoin.id,
             status: "minted",
             txHash,
             tokenAddress,
+            tokenId: nftTokenId,
           });
           setHash(txHash); setStage("confirmed"); setLocal("done");
           onPublished?.(r.post.id);
@@ -142,7 +149,7 @@ export function CreateModal({ onClose, onPublished }: { onClose: () => void; onP
   return <>
     <Modal open onClose={onClose} wide>
       <div className="font-semibold text-lg">Create on MST Testnet</div>
-      <p className="muted text-sm mt-1">Every post becomes an NFT token you own. Others can buy it — more buyers raise the price.</p>
+      <p className="muted text-sm mt-1">Every post mints an ERC-721 collectible (image in your wallet) plus a tradable token others can buy.</p>
       <label className={cn("mt-4 flex flex-col items-center justify-center rounded-xl border border-dashed border-white/15 py-8 cursor-pointer hover:border-teal-300/40 transition")}>
         {preview ? <>
           {file?.type.startsWith("video/")
@@ -163,7 +170,7 @@ export function CreateModal({ onClose, onPublished }: { onClose: () => void; onP
       <div className="grid grid-cols-2 gap-2">
         {(["post", "creator-coin"] as const).map((k) => <button key={k} onClick={() => setKind(k)}
           className={cn("rounded-xl border px-3 py-3 text-sm capitalize transition", kind === k ? "border-teal-300/60 bg-teal-300/10 text-white" : "border-white/10 muted hover:border-white/25")}>
-          {k === "post" ? "Post NFT" : "My Creator Coin"}</button>)}
+          {k === "post" ? "Post" : "My Creator Coin"}</button>)}
       </div>
       {kind === "creator-coin" && <div className="mt-4 rounded-xl border border-white/10 p-4">
         {myCoin ? <>
@@ -181,12 +188,18 @@ export function CreateModal({ onClose, onPublished }: { onClose: () => void; onP
           ? <div className="mt-5"><NetworkSwitchButton /></div>
           : <Button onClick={() => void publish()} disabled={(kind === "post" && !caption.trim()) || busy} className="w-full mt-5">
             {busy ? <><Loader2 size={16} className="animate-spin" />Publishing…</>
-              : kind === "creator-coin" ? "Mint Creator Coin" : "Publish & Mint NFT"}</Button>}
+              : kind === "creator-coin" ? "Mint Creator Coin" : "Publish & Mint"}</Button>}
       <div className="text-[11px] muted mt-3 space-y-1">
+        {kind === "post" && hasPostNftMinter() && !file && (
+          <p>Upload a photo so your NFT shows the post image in BridgeKey.</p>
+        )}
+        {kind === "post" && hasPostNftMinter() && !process.env.NEXT_PUBLIC_APP_URL && typeof window !== "undefined" && window.location.hostname === "localhost" && (
+          <p className="text-amber-300/90">Deploy to Vercel (or set NEXT_PUBLIC_APP_URL) so BridgeKey can load NFT images — localhost won’t work on mobile.</p>
+        )}
         {(local === "uploading" || local === "metadata" || local === "chain") && <p>Saving to feed… then BridgeKey will ask you to mint on MST Testnet.</p>}
         {error && stage === "idle" && <p className="text-red-400">{error}</p>}
       </div>
     </Modal>
-    {stage !== "idle" && <TransactionStatus stage={stage} hash={hash} error={error} onClose={closeTx} title={kind === "post" ? "Mint Post NFT" : "Mint Creator Coin"} />}
+    {stage !== "idle" && <TransactionStatus stage={stage} hash={hash} error={error} onClose={closeTx} title={kind === "post" ? "Mint post NFT + token" : "Mint Creator Coin"} />}
   </>;
 }

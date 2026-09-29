@@ -14,6 +14,8 @@ function load(name) {
 const creatorCoin = load("CreatorCoin");
 const creatorFactory = load("CreatorFactory");
 const postFactory = load("PostFactory");
+const postFactoryV2 = load("PostFactoryV2");
+const postNft = load("PostNFT");
 const marketplace = load("Marketplace");
 
 const erc20 = `// CreatorCoin (MEP-20) ABI — generated from contracts/solidity/CreatorCoin.sol.
@@ -31,6 +33,8 @@ import type { InterfaceAbi } from "ethers";
 
 export const CREATOR_FACTORY_ABI: InterfaceAbi = ${JSON.stringify(creatorFactory)};
 export const POST_FACTORY_ABI: InterfaceAbi = ${JSON.stringify(postFactory)};
+export const POST_FACTORY_V2_ABI: InterfaceAbi = ${JSON.stringify(postFactoryV2)};
+export const POST_NFT_ABI: InterfaceAbi = ${JSON.stringify(postNft)};
 export const MARKETPLACE_ABI: InterfaceAbi = ${JSON.stringify(marketplace)};
 `;
 

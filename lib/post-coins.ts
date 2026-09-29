@@ -2,10 +2,15 @@
 
 import type { LivePostCoin, MintStatus, PostCoinInfo } from "./db/types";
 import type { MarketCoin } from "./markets";
+import { COIN_INITIAL_SUPPLY } from "./bonding-curve";
 import { CONTRACT_ADDRESSES, isContractDeployed } from "./mst/config";
 
 export function isPostCoinOnChain(coin: PostCoinInfo | LivePostCoin): boolean {
   return coin.mintStatus === "minted" && !!coin.tokenAddress;
+}
+
+export function isPostNftMinted(coin: PostCoinInfo | LivePostCoin): boolean {
+  return isPostCoinOnChain(coin) && !!coin.nftTokenId;
 }
 
 export function isPostMarketplaceDeployed(): boolean {
@@ -27,7 +32,7 @@ export function toMarketCoinFromPostCoin(coin: PostCoinInfo | LivePostCoin, crea
     price: coin.price,
     change24h: coin.change24h,
     volume24h: live.volume24h ?? 0,
-    marketCap: coin.price * (live.totalSupply ?? 10000),
+    marketCap: coin.price * COIN_INITIAL_SUPPLY,
     liquidity: live.reserveMst ?? 100,
     holders: live.holders ?? 1,
     spark: [],
@@ -38,6 +43,9 @@ export function toMarketCoinFromPostCoin(coin: PostCoinInfo | LivePostCoin, crea
     chainId: live.chainId ?? null,
     tokenAddress: coin.tokenAddress,
     viewerHolding: coin.viewerHolding,
+    reserveMst: live.reserveMst ?? 100,
+    poolSupply: live.totalSupply ?? COIN_INITIAL_SUPPLY,
+    initialSupply: COIN_INITIAL_SUPPLY,
   };
 }
 

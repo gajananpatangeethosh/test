@@ -41,6 +41,8 @@ if (process.env.NEXT_PUBLIC_MST_EXPLORER_URL) ACTIVE_NETWORK.explorerUrl = proce
 export const CONTRACT_ADDRESSES = {
   creatorFactory: process.env.NEXT_PUBLIC_CREATOR_FACTORY_ADDRESS || "",
   postFactory: process.env.NEXT_PUBLIC_POST_FACTORY_ADDRESS || "",
+  postFactoryV2: process.env.NEXT_PUBLIC_POST_FACTORY_V2_ADDRESS || "",
+  postNft: process.env.NEXT_PUBLIC_POST_NFT_ADDRESS || "",
   marketplace: process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS || "",
 };
 export const isContractDeployed = (addr: string) => /^0x[0-9a-fA-F]{40}$/.test(addr);

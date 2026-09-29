@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Modal, Button } from "./ui";
 import { useApp } from "@/lib/store";
@@ -13,7 +13,9 @@ import { NetworkSwitchButton } from "./mst/wallet-ui";
 import { tradeCoinAction } from "@/app/actions/coins";
 import { buyPostCoinAction } from "@/app/actions/post-coins";
 import { toMarketCoinFromPostCoin, usesBridgeKeyPostBuy } from "@/lib/post-coins";
-import { fmtMst, fmtNum } from "@/lib/utils";
+import { quoteBuy, quoteSell } from "@/lib/bonding-curve";
+import { LiquidityPoolCard, poolFromMarket } from "./liquidity-pool";
+import { fmtMst, fmtNum, fmtUnits } from "@/lib/utils";
 import type { TxStage } from "@/lib/mst/types";
 
 const TRADE_ERRORS: Record<string, string> = {
@@ -102,7 +104,19 @@ export function TradeModal() {
   };
 
   const rawAmount = Number(amt.replace("%", "")) || 0;
-  const receive = side === "buy" ? rawAmount / (coin?.price || 1) : ((coin?.viewerHolding ?? 0) * rawAmount) / 100;
+  const tradeAmount = side === "buy"
+    ? rawAmount
+    : ((coin?.viewerHolding ?? 0) * rawAmount) / 100;
+
+  const quote = useMemo(() => {
+    if (!coin || !live || tradeAmount <= 0) return null;
+    const pool = poolFromMarket(coin);
+    return side === "buy" ? quoteBuy(pool, tradeAmount) : quoteSell(pool, tradeAmount);
+  }, [coin, live, side, tradeAmount]);
+
+  const receive = side === "buy"
+    ? (quote && "units" in quote ? quote.units : 0)
+    : (quote && "proceedsMst" in quote ? quote.proceedsMst : 0);
   const mintDisabled = side === "sell" && coin !== null && coin.viewerHolding <= 0;
 
   return <>
@@ -120,8 +134,23 @@ export function TradeModal() {
           {live && !isOnChain(coin) && isMarketplaceDeployed() && <span className="text-amber-300/90"> · creator must mint on MST first</span>}
         </div>
         {live && <div className="mt-3 flex gap-3 text-xs muted">
-          <span>Pool {fmtMst(coin.liquidity)} MST</span><span>Holders {fmtNum(coin.holders)}</span>
+          <span>Pool {fmtMst(coin.liquidity)} MST</span>
+          <span>Supply {fmtUnits(coin.poolSupply ?? 0)}</span>
+          <span>Holders {fmtNum(coin.holders)}</span>
         </div>}
+        {live && coin.poolSupply != null && (
+          <div className="mt-3">
+            <LiquidityPoolCard
+              compact
+              price={coin.price}
+              reserveMst={coin.reserveMst ?? coin.liquidity}
+              poolSupply={coin.poolSupply}
+              initialSupply={coin.initialSupply}
+              side={side}
+              projectedPrice={quote?.newPrice}
+            />
+          </div>
+        )}
         {!isConnected && <div className="mt-4"><Button onClick={() => void connect()} className="w-full">Connect BridgeKey to trade</Button></div>}
         {isConnected && !isCorrectNetwork && <div className="mt-4"><NetworkSwitchButton /></div>}
         <div className="grid grid-cols-2 gap-2 mt-4 rounded-full bg-white/[.04] border border-white/10 p-1">
@@ -134,8 +163,9 @@ export function TradeModal() {
         <div className="flex gap-2 mt-3">{presets.map((v) => <button key={v} onClick={() => setAmt(v)}
           className="flex-1 rounded-full border border-white/10 py-1.5 text-sm muted hover:text-white hover:border-white/25">{v}</button>)}</div>
         <div className="muted text-sm mt-3">
-          {side === "buy" ? <>You receive ≈ {fmtNum(receive)} {coin.symbol}</>
-            : <>You receive ≈ {fmtMst(receive * coin.price)} MST</>}
+          {side === "buy"
+            ? <>You receive ≈ {fmtNum(receive)} {coin.symbol}{quote ? <> at ~{fmtMst(quote.newPrice)} MST</> : null}</>
+            : <>You receive ≈ {fmtMst(receive)} MST{quote ? <> · price drops to ~{fmtMst(quote.newPrice)} MST</> : null}</>}
         </div>
         <Button disabled={!isConnected || !isCorrectNetwork || mintDisabled} onClick={() => { setStage("preparing"); void doTrade(); }} className="w-full mt-4">
           {mintDisabled ? `No ${coin.symbol} to sell` : `Confirm ${side} on MST`}</Button>
@@ -168,7 +198,11 @@ export function CollectModal() {
   const close = () => { closeCollect(); setStage("idle"); setHash(""); setError(null); setAmt("1"); };
   const presets = ["0.5", "1", "2", "5"];
   const spend = Number(amt) || 0;
-  const receive = postCoin && spend > 0 ? spend / postCoin.price : 0;
+  const postPool = postCoin
+    ? { reserveMst: postCoin.reserveMst ?? 100, poolSupply: postCoin.poolSupply ?? 10000 }
+    : null;
+  const buyQuote = postPool && spend > 0 ? quoteBuy(postPool, spend) : null;
+  const receive = buyQuote?.units ?? 0;
 
   const buy = async () => {
     if (!postCoin || !target) { setError("This post has no tradable token."); setStage("failed"); return; }
@@ -204,19 +238,33 @@ export function CollectModal() {
 
   return <>
     <Modal open={!!target && stage === "idle"} onClose={close}>
-      <div className="font-semibold text-lg">Buy post NFT</div>
+      <div className="font-semibold text-lg">Buy post token</div>
       <p className="muted text-sm mt-1">@{target?.creatorUsername} · {postCoin?.symbol ?? mockPost?.coinId}</p>
-      {postCoin && <div className="mt-3 rounded-xl border border-white/10 p-4 text-sm space-y-1">
-        <div className="flex justify-between"><span className="muted">Price now</span><span>{fmtMst(postCoin.price)} MST</span></div>
-        <div className="flex justify-between"><span className="muted">Your holding</span><span>{fmtNum(postCoin.viewerHolding)} {postCoin.symbol}</span></div>
-        <p className="text-xs muted pt-1">More buyers raise the price via the bonding curve.</p>
+      {postCoin && <div className="mt-3 space-y-3">
+        <div className="rounded-xl border border-white/10 p-4 text-sm space-y-1">
+          <div className="flex justify-between"><span className="muted">Price now</span><span>{fmtMst(postCoin.price)} MST</span></div>
+          <div className="flex justify-between"><span className="muted">Your holding</span><span>{fmtNum(postCoin.viewerHolding)} {postCoin.symbol}</span></div>
+        </div>
+        {postCoin.poolSupply != null && (
+          <LiquidityPoolCard
+            compact
+            price={postCoin.price}
+            reserveMst={postCoin.reserveMst ?? 100}
+            poolSupply={postCoin.poolSupply}
+            side="buy"
+            projectedPrice={buyQuote?.newPrice}
+          />
+        )}
       </div>}
       <label className="block mt-4 text-sm muted">Spend (MST)</label>
       <input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal"
         className="mt-1 w-full rounded-xl bg-white/[.04] border border-white/10 px-4 py-3 outline-none focus:border-teal-300/50" />
       <div className="flex gap-2 mt-3">{presets.map((v) => <button key={v} onClick={() => setAmt(v)}
         className="flex-1 rounded-full border border-white/10 py-1.5 text-sm muted hover:text-white hover:border-white/25">{v}</button>)}</div>
-      {postCoin && spend > 0 && <p className="muted text-sm mt-3">You receive ≈ {fmtNum(receive)} {postCoin.symbol}</p>}
+      {postCoin && spend > 0 && <p className="muted text-sm mt-3">
+        You receive ≈ {fmtNum(receive)} {postCoin.symbol}
+        {buyQuote ? <> · price rises to ~{fmtMst(buyQuote.newPrice)} MST</> : null}
+      </p>}
       {!isConnected
         ? <Button onClick={() => void connect()} className="w-full mt-4">Connect BridgeKey to buy</Button>
         : !isCorrectNetwork

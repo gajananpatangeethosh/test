@@ -3,6 +3,7 @@
 // Server Actions and Route Handlers; this module never reads cookies itself.
 
 import { isMissingTable, serviceClient } from "./client";
+import { COIN_INITIAL_PRICE } from "@/lib/bonding-curve";
 import {
   normalizeCaption,
   normalizeCommentBody,
@@ -715,8 +716,8 @@ export async function appendOrbitMessage(
 const COIN_COLUMNS =
   "id,owner_wallet,name,symbol,price_mst,reserve_mst,total_supply,chain_id,token_address,token_id,mint_status,mint_tx_hash,mint_error,created_at";
 
-/** Initial float, mirrors the total_supply default in 0002_creator_coins.sql. */
-const COIN_INITIAL_SUPPLY = 1_000_000;
+/** Initial float, mirrors the total_supply default in 0005_creator_coin_100_mst.sql. */
+const COIN_INITIAL_SUPPLY = 10_000;
 const COIN_TRADE_LIMIT = 2000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -774,14 +775,23 @@ function coinErrorCode(error: unknown): string {
   return known.find((code) => message.includes(code)) ?? "TRADE_FAILED";
 }
 
-/** Trades arrive newest-first; sparklines read left to right. */
-function buildSpark(trades: CoinTradeRow[]): number[] {
-  const prices = trades
+/** Build a left-to-right price series from launch → each trade → spot now. */
+function buildSpark(trades: CoinTradeRow[], currentPrice: number): number[] {
+  const tradePrices = trades
     .map((t) => num(t.price_mst))
     .filter((p) => p > 0)
-    .reverse()
-    .slice(-24);
-  return prices.length < 2 ? [] : prices.map((p) => +p.toFixed(6));
+    .reverse();
+
+  const points: number[] = [COIN_INITIAL_PRICE];
+  for (const p of tradePrices) {
+    if (Math.abs(points[points.length - 1] - p) > 1e-12) points.push(p);
+  }
+  if (currentPrice > 0 && Math.abs(points[points.length - 1] - currentPrice) > 1e-12) {
+    points.push(currentPrice);
+  }
+  if (points.length === 1) points.push(points[0]);
+
+  return points.slice(-24).map((p) => +p.toFixed(6));
 }
 
 function changeSince(trades: CoinTradeRow[], price: number, sinceIso: string): number {
@@ -871,7 +881,7 @@ async function assembleCoins(rows: CoinRow[], viewer: string | null, tradeLimit 
       marketCap: +(price * COIN_INITIAL_SUPPLY).toFixed(2),
       liquidity: +num(row.reserve_mst).toFixed(2),
       holders: holdersByCoin.get(row.id) ?? 0,
-      spark: buildSpark(coinTrades),
+      spark: buildSpark(coinTrades, price),
       reserveMst: num(row.reserve_mst),
       poolSupply: num(row.total_supply),
       totalSupply: COIN_INITIAL_SUPPLY,
@@ -1077,8 +1087,11 @@ function toPostCoinInfo(coin: LivePostCoin): PostCoinInfo {
     change24h: coin.change24h,
     mintStatus: coin.mintStatus,
     tokenAddress: coin.tokenAddress,
+    nftTokenId: coin.nftTokenId,
     ownerWallet: coin.ownerWallet,
     viewerHolding: coin.viewerHolding,
+    reserveMst: coin.reserveMst,
+    poolSupply: coin.totalSupply,
   };
 }
 
@@ -1152,6 +1165,7 @@ async function assemblePostCoins(rows: PostCoinRow[], viewer: string | null): Pr
       mintError: row.mint_error,
       chainId: row.chain_id,
       tokenAddress: row.token_address,
+      nftTokenId: row.token_id,
       settlement: row.token_address ? "onchain" : "offchain",
       viewerHolding: me ? holdingByCoinWallet.get(`${row.id}:${me}`) ?? 0 : 0,
       createdAt: row.created_at,
@@ -1271,5 +1285,35 @@ export async function recordPostCoinMint(
   if (input.status === "failed") update.mint_error = input.error ?? "MINT_FAILED";
   const saved = await sb.from("post_coins").update(update).eq("id", coinId);
   if (saved.error) throw new Error("MINT_STATUS_FAILED");
+  return getPostCoinById(coinId, wallet);
+}
+
+/** Attach an ERC-721 token id to a post that already has an on-chain ERC-20 coin. */
+export async function recordPostNftMint(
+  walletInput: string,
+  coinId: string,
+  input: { txHash: string; tokenId: string },
+): Promise<LivePostCoin | null> {
+  const wallet = normalizeWalletInput(walletInput);
+  if (!UUID_RE.test(coinId)) throw new Error("COIN_NOT_FOUND");
+  const sb = serviceClient();
+  const owned = await sb
+    .from("post_coins")
+    .select("id,mint_status,token_address")
+    .eq("id", coinId)
+    .eq("owner_wallet", wallet)
+    .maybeSingle();
+  if (owned.error) {
+    if (isMissingTable(owned.error)) throw new Error("DB_NOT_READY");
+    throw new Error("POST_COIN_FAILED");
+  }
+  const row = owned.data as { id: string; mint_status: string; token_address: string | null } | null;
+  if (!row) throw new Error("FORBIDDEN");
+  if (row.mint_status !== "minted" || !row.token_address) throw new Error("TOKEN_NOT_MINTED");
+  const saved = await sb
+    .from("post_coins")
+    .update({ token_id: input.tokenId, mint_tx_hash: input.txHash, mint_error: null })
+    .eq("id", coinId);
+  if (saved.error) throw new Error("NFT_MINT_STATUS_FAILED");
   return getPostCoinById(coinId, wallet);
 }

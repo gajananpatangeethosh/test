@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/shell";
 import { Tabs, Badge, Card } from "@/components/ui";
-import { PortfolioCard, ActivityTimeline, MyCreatorCoin } from "@/components/wallet";
+import { PortfolioCard, MyCreatorCoin } from "@/components/wallet";
 import { getMarketsAction } from "@/app/actions/coins";
 import { useApp } from "@/lib/store";
 import { coinSourceLabel, fromLiveCoin, type MarketCoin } from "@/lib/markets";
@@ -38,7 +38,7 @@ export default function Markets() {
   const rows = live.sort(SORTS[tab]);
   const liveCount = live.length;
 
-  return <AppShell right={<><MyCreatorCoin /><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+  return <AppShell right={<><MyCreatorCoin /><PortfolioCard limit={4} /></>}>
     <div className="py-4 px-3 sm:px-0">
       <div className="flex items-center justify-between gap-2 px-1">
         <h1 className="text-xl font-bold">Markets</h1>

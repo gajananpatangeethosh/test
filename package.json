@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "contracts:compile": "node scripts/compile.mjs && node scripts/generate-abis.mjs",
+    "contracts:deploy:nft": "node scripts/deploy-post-nft.mjs",
+    "contracts:deploy:nft:wait": "node scripts/wait-and-deploy-nft.mjs"
   },
   "dependencies": {
     "@mstblockchain/mst-sdk": "^1.0.0",

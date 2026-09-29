@@ -5,8 +5,9 @@ import { BadgeCheck, ArrowUpRight, ArrowDownRight, Sparkles } from "lucide-react
 import { AppShell } from "@/components/shell";
 import { Badge, Button, Card, Avatar } from "@/components/ui";
 import { CoinChart } from "@/components/chart";
+import { LiquidityPoolCard } from "@/components/liquidity-pool";
 import { PostCard } from "@/components/post";
-import { PortfolioCard, ActivityTimeline, MyCreatorCoin } from "@/components/wallet";
+import { PortfolioCard, MyCreatorCoin } from "@/components/wallet";
 import { MintButton } from "@/components/mint-button";
 import { coinById, creatorByName, posts, recentTrades } from "@/lib/data";
 import { toMockFeedPost, fromLiveFeedPost, type FeedPost } from "@/lib/feed";
@@ -14,7 +15,7 @@ import { coinSourceLabel, fromLiveCoin, fromLiveCoinTrade, isMarketplaceDeployed
 import { getCoinAction } from "@/app/actions/coins";
 import { getAuthorPostsAction } from "@/app/actions/posts";
 import { useApp } from "@/lib/store";
-import { fmtMst, fmtNum, timeAgo } from "@/lib/utils";
+import { fmtMst, fmtNum, fmtUnits, timeAgo } from "@/lib/utils";
 
 export default function CoinPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -64,7 +65,7 @@ export default function CoinPage({ params }: { params: Promise<{ id: string }> }
   }
 
   if (state === "loading" || (state === "live" && live === null)) {
-    return <AppShell right={<><MyCreatorCoin /><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+    return <AppShell right={<><MyCreatorCoin /><PortfolioCard limit={4} /></>}>
       <div className="py-20 text-center text-sm muted">Loading coin…</div>
     </AppShell>;
   }
@@ -85,12 +86,13 @@ function LiveCoinView({ coin, trades, authorPosts, onTrade }: {
   const up = coin.change24h >= 0;
   const minted = coin.mintStatus === "minted";
   const stats: [string, string][] = [
-    ["Market cap", `${fmtNum(coin.marketCap)} MST`],
-    ["Liquidity", `${fmtNum(coin.liquidity)} MST`],
-    ["Volume 24h", `${fmtNum(coin.volume24h)} MST`],
+    ["Market cap", `${fmtMst(coin.marketCap)} MST`],
+    ["Liquidity", `${fmtMst(coin.liquidity)} MST`],
+    ["Pool supply", fmtUnits(coin.poolSupply ?? 0)],
+    ["Volume 24h", `${fmtMst(coin.volume24h)} MST`],
     ["Holders", fmtNum(coin.holders)],
   ];
-  return <AppShell right={<><MyCreatorCoin /><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+  return <AppShell right={<><MyCreatorCoin /><PortfolioCard limit={4} /></>}>
     <div className="py-4 px-3 sm:px-0 space-y-3">
       <div className="card p-5">
         <div className="flex items-center gap-3">
@@ -148,8 +150,17 @@ function LiveCoinView({ coin, trades, authorPosts, onTrade }: {
         )}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">{stats.map(([k, v]) => (
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">{stats.map(([k, v]) => (
         <Card key={k} className="p-4"><div className="muted text-xs">{k}</div><div className="font-semibold mt-1">{v}</div></Card>))}</div>
+
+      {coin.poolSupply != null && (
+        <LiquidityPoolCard
+          price={coin.price}
+          reserveMst={coin.reserveMst ?? coin.liquidity}
+          poolSupply={coin.poolSupply}
+          initialSupply={coin.initialSupply}
+        />
+      )}
 
       <Card className="p-5">
         <div className="font-semibold mb-3">Recent trades</div>
@@ -185,7 +196,7 @@ function MockCoinView({ id }: { id: string }) {
     ["Volume 24h", `${fmtNum(coin.volume24h)} MST`], ["Holders", fmtNum(coin.holders)],
   ];
   const target = mockMarketCoins().find((c) => c.id === coin.id) ?? null;
-  return <AppShell right={<><MyCreatorCoin /><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+  return <AppShell right={<><MyCreatorCoin /><PortfolioCard limit={4} /></>}>
     <div className="py-4 px-3 sm:px-0 space-y-3">
       <div className="card p-5">
         <div className="flex items-center gap-3">

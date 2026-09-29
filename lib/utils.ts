@@ -5,6 +5,12 @@ export const fmtNum = (n: number) =>
   n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${n}`;
 export const fmtMst = (n: number) =>
   n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2);
+export const fmtUnits = (n: number) => {
+  if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2);
+};
+export const fmtPct = (n: number) => `${n < 10 ? n.toFixed(1) : Math.round(n)}%`;
 export const timeAgo = (iso: string) => {
   const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
   if (s < 60) return `${s}s`;

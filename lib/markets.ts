@@ -30,6 +30,9 @@ export type MarketCoin = {
   chainId: string | null;
   tokenAddress: string | null;
   viewerHolding: number;
+  reserveMst?: number;
+  poolSupply?: number;
+  initialSupply?: number;
 };
 
 export type MarketTrade = {
@@ -43,11 +46,6 @@ export type MarketTrade = {
   source: CoinSource;
 };
 
-/** Deterministic flat line for coins with no trade history yet. */
-function flatSpark(price: number, n = 24): number[] {
-  const base = price > 0 ? price : 0.01;
-  return Array.from({ length: n }, (_, i) => +(base * (1 + 0.012 * Math.sin(i * 0.9))).toFixed(6));
-}
 
 function mockHolding(coinId: string): number {
   return mockHoldings.find((h) => h.coinId === coinId)?.amount ?? 0;
@@ -99,7 +97,7 @@ export function fromLiveCoin(coin: LiveCoin): MarketCoin {
     marketCap: coin.marketCap,
     liquidity: coin.liquidity,
     holders: coin.holders,
-    spark: coin.spark.length > 1 ? coin.spark : flatSpark(coin.price),
+    spark: coin.spark,
     source: "live",
     createdAt: coin.createdAt,
     mintStatus: coin.mintStatus,
@@ -107,6 +105,9 @@ export function fromLiveCoin(coin: LiveCoin): MarketCoin {
     chainId: coin.chainId,
     tokenAddress: coin.tokenAddress,
     viewerHolding: coin.viewerHolding,
+    reserveMst: coin.reserveMst,
+    poolSupply: coin.poolSupply,
+    initialSupply: coin.totalSupply,
   };
 }
 

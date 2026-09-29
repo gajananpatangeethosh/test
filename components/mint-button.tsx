@@ -48,7 +48,7 @@ export function MintButton({
         name,
         symbol,
         owner: address!,
-        seedMst: "10",
+        seedMst: "1",
         onStage: setStage,
       });
       setHash(txHash);

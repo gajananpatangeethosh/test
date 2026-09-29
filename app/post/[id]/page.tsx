@@ -6,7 +6,7 @@ import { ArrowLeft } from "lucide-react";
 import { AppShell } from "@/components/shell";
 import { PostCard } from "@/components/post";
 import { Comments } from "@/components/comments";
-import { PortfolioCard, ActivityTimeline } from "@/components/wallet";
+import { PortfolioCard } from "@/components/wallet";
 import { posts, coinById } from "@/lib/data";
 import { postById } from "@/lib/search";
 import { fromLiveFeedPost, toMockFeedPost, type FeedPost } from "@/lib/feed";
@@ -77,7 +77,7 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
 
   if (live) {
     const coin = live.coinId ? (() => { try { return coinById(live.coinId); } catch { return null; } })() : null;
-    return <AppShell right={<><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+    return <AppShell right={<PortfolioCard limit={4} />}>
       <div className="py-4 px-3 sm:px-0 space-y-3">
         <Link href="/home" className="inline-flex items-center gap-1.5 muted text-sm hover:text-white px-1">
           <ArrowLeft size={15} />Back to feed
@@ -110,14 +110,14 @@ export default function PostPage({ params }: { params: Promise<{ id: string }> }
   const post = postById(id);
   if (!post) {
     if (checkedLive) notFound();
-    return <AppShell right={<><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+    return <AppShell right={<PortfolioCard limit={4} />}>
       <div className="py-4 px-3 sm:px-0"><div className="card p-4 text-sm muted">Loading post…</div></div>
     </AppShell>;
   }
   const feedPost = toMockFeedPost(post);
   const more = posts.filter((p) => p.creator === post.creator && p.id !== post.id).slice(0, 3);
   const coin = post.coinId ? coinById(post.coinId) : null;
-  return <AppShell right={<><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+  return <AppShell right={<PortfolioCard limit={4} />}>
     <div className="py-4 px-3 sm:px-0 space-y-3">
       <Link href="/home" className="inline-flex items-center gap-1.5 muted text-sm hover:text-white px-1">
         <ArrowLeft size={15} />Back to feed

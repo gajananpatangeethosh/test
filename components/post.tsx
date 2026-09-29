@@ -7,6 +7,8 @@ import { sourceLabel, type FeedPost } from "@/lib/feed";
 import { mockMarketCoinById } from "@/lib/markets";
 import { useApp } from "@/lib/store";
 import { Avatar, Badge } from "./ui";
+import { MintNftButton } from "./mint-nft-button";
+import { MintPostButton } from "./mint-post-button";
 import { fmtMst, timeAgo, fmtNum, cn } from "@/lib/utils";
 
 export function PostComposer({ onCreate }: { onCreate: () => void }) {
@@ -76,11 +78,17 @@ export function PostCard({ post, like }: {
           </div>
         </div>
         {postCoin?.mintStatus === "minted"
-          ? <Badge tone="up">NFT on MST</Badge>
+          ? <Badge tone="up">{postCoin.nftTokenId ? "NFT + token" : "Token on MST"}</Badge>
           : postCoin
             ? <Badge tone="neutral">Minting…</Badge>
             : <Badge tone={change >= 0 ? "up" : "down"}>{change >= 0 ? "▲" : "▼"} 24h</Badge>}
       </div>
+    )}
+    {postCoin && post.source === "live" && (
+      <MintPostButton postId={post.id} postCoin={postCoin} />
+    )}
+    {postCoin && post.source === "live" && (
+      <MintNftButton postId={post.id} postCoin={postCoin} />
     )}
     <div className="mt-3 grid grid-cols-2 gap-2">
       {postCoin && post.source === "live" ? (

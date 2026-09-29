@@ -4,11 +4,11 @@ import { AppShell } from "@/components/shell";
 import { Feed } from "@/components/feed";
 import { CreatorCard, CoinCard } from "@/components/cards";
 import { Tabs } from "@/components/ui";
-import { PortfolioCard, ActivityTimeline } from "@/components/wallet";
+import { PortfolioCard } from "@/components/wallet";
 import { creators, coins } from "@/lib/data";
 export default function Explore() {
   const [tab, setTab] = useState("Posts");
-  return <AppShell right={<><PortfolioCard /><ActivityTimeline limit={4} /></>}>
+  return <AppShell right={<PortfolioCard limit={4} />}>
     <div className="py-4 px-3 sm:px-0 space-y-4">
       <h1 className="text-xl font-bold px-1">Explore</h1>
       <Tabs tabs={["Posts", "Creators", "Coins"]} value={tab} onChange={setTab} />
