@@ -1,7 +1,9 @@
 import { NextRequest } from "next/server";
 import { AI_NAME, APP_NAME, APP_URL } from "@/lib/brand";
+import { listProfileNames } from "@/lib/db/dal";
 import {
-  MAX_TRANSFER, checkTransfer, currency, extractAddresses, extractAmounts, type TransferDraft,
+  MAX_TRANSFER, checkTransfer, currency, extractAddresses, extractAmounts,
+  matchProfilesByName, stripMatchedNames, type NameMatch, type TransferDraft,
 } from "@/lib/orbit/transfer";
 
 // Orbit "Transaction" mode — natural-language -> a transfer the user can approve.
@@ -127,11 +129,16 @@ async function pickAmount(
   return { question: `Orbit's transfer parser is unavailable right now. (${lastError})` };
 }
 
-export async function POST(req: NextRequest) {
-  const key = process.env.OPENROUTER_API_KEY || "";
-  if (!key)
-    return Response.json({ error: "not_configured", message: "Orbit is not configured yet. Add OPENROUTER_API_KEY to .env.local — see ORBIT_SETUP.md." }, { status: 501 });
+function shortWallet(wallet: string): string {
+  return wallet.length > 12 ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : wallet;
+}
 
+function describeMatch(match: NameMatch): string {
+  const name = match.displayName || match.username;
+  return `${name} (${shortWallet(match.wallet)})`;
+}
+
+export async function POST(req: NextRequest) {
   let body: { prompt?: string; from?: string | null };
   try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }, { status: 400 }); }
 
@@ -140,20 +147,44 @@ export async function POST(req: NextRequest) {
   if (prompt.length > 600) return Response.json({ error: "too_long" }, { status: 400 });
 
   // 1. Recipient — deterministic, never round-trips through the model.
+  //    An address in the sentence wins. Otherwise the display name (or username)
+  //    must appear in the sentence and match exactly one profile row.
   const addresses = extractAddresses(prompt);
-  if (addresses.length === 0)
-    return Response.json({ ok: false, question: "I need the recipient's wallet address — 0x followed by 40 hex characters. I won't guess it." }, { status: 200 });
   if (addresses.length > 1)
     return Response.json({ ok: false, question: `That message has ${addresses.length} addresses in it. Send to just one per message so there's no ambiguity.`, candidates: addresses }, { status: 200 });
-  const to = addresses[0];
+
+  let to = addresses[0] ?? "";
+  let recipientName = "";
+  let amountText = prompt;
+  if (!to) {
+    let profiles;
+    try { profiles = await listProfileNames(); }
+    catch {
+      return Response.json({ ok: false, question: "I couldn't look up display names. Paste the wallet address (0x…) instead." }, { status: 200 });
+    }
+    const matches = matchProfilesByName(prompt, profiles);
+    if (matches.length === 0)
+      return Response.json({ ok: false, question: `I need a wallet address (0x...) or the person's display name, for example "send 5 ${currency()} to alice".` }, { status: 200 });
+    if (matches.length > 1)
+      return Response.json({
+        ok: false,
+        question: `More than one profile matches. Name just one: ${matches.map(describeMatch).join(", ")}.`,
+      }, { status: 200 });
+    to = matches[0].wallet;
+    recipientName = matches[0].displayName || matches[0].username;
+    amountText = stripMatchedNames(prompt, matches);
+  }
 
   // 2. Amount — deterministic whenever the sentence is unambiguous.
-  const candidates = extractAmounts(prompt);
+  const candidates = extractAmounts(amountText);
   let amount: string;
   if (candidates.length === 1) {
     amount = candidates[0];
   } else {
-    const picked = await pickAmount(key, prompt, candidates, to);
+    const key = process.env.OPENROUTER_API_KEY || "";
+    if (!key)
+      return Response.json({ error: "not_configured", message: "Orbit is not configured yet. Add OPENROUTER_API_KEY to .env.local — see ORBIT_SETUP.md." }, { status: 501 });
+    const picked = await pickAmount(key, amountText, candidates, to);
     if ("question" in picked) return Response.json({ ok: false, question: picked.question }, { status: 200 });
     amount = picked.amount;
   }
@@ -166,6 +197,7 @@ export async function POST(req: NextRequest) {
   return Response.json({
     ok: true,
     draft,
+    ...(recipientName ? { recipientName } : {}),
     // Surfaced so the UI can be honest about how the values were obtained.
     source: candidates.length === 1 ? "verbatim" : "model-picked",
   }, { status: 200 });

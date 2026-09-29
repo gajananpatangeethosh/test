@@ -40,7 +40,7 @@ type TxStatus = TxStage | "review";
 type TxMsg = {
   kind: "tx"; id: string; to: string; amount: string; memo: string;
   status: TxStatus; hash?: string; error?: string; question?: string;
-  source?: string; hint?: string;
+  source?: string; hint?: string; recipient?: string;
 };
 type Msg = TextMsg | ImageMsg | TxMsg;
 
@@ -78,7 +78,7 @@ const SUGGESTIONS: Record<Mode, string[]> = {
     "abstract 3d render of a glass coin floating over a dark grid",
   ],
   tx: [
-    `Send 5 ${currency()} to 0x1111111111111111111111111111111111111111`,
+    `Send 5 ${currency()} to alice`,
     `Send 12.5 ${currency()} to 0x2222222222222222222222222222222222222222 for a tip`,
   ],
 };
@@ -90,7 +90,7 @@ type Mode = "chat" | "post" | "tx";
 const MODES: { id: Mode; label: string; icon: typeof Sparkles; placeholder: string }[] = [
   { id: "chat", label: "Chat", icon: Sparkles, placeholder: "Message Orbit…" },
   { id: "post", label: "Post", icon: ImagePlus, placeholder: "Describe the post image to generate…" },
-  { id: "tx", label: "Send", icon: ArrowRightLeft, placeholder: `e.g. Send 5 ${currency()} to 0x…` },
+  { id: "tx", label: "Send", icon: ArrowRightLeft, placeholder: `e.g. Send 5 ${currency()} to alice` },
 ];
 
 const newId = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -239,14 +239,14 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
   }, [hydrated, msgs, serverThread]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [msgs]);
 
-  // Read which Puter account this page is on when Post mode opens. Never prompts:
-  // Puter's popup only counts as user-initiated, so sign-in waits for a real click.
+  // Read which Puter account this page is on only when that engine is selected.
+  // The default path never touches Puter, so a spent account cannot block it.
   useEffect(() => {
-    if (mode !== "post" || puterUser !== undefined) return;
+    if (mode !== "post" || engine !== "puter" || puterUser !== undefined) return;
     let live = true;
     signedInUser().then((u) => { if (live) setPuterUser(u); }).catch(() => { if (live) setPuterUser(null); });
     return () => { live = false; };
-  }, [mode, puterUser]);
+  }, [mode, engine, puterUser]);
 
   const doSignIn = async () => {
     try {
@@ -353,37 +353,51 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
       { kind: "image", id, prompt: p, src: null, caption: "", status: "loading" } as ImageMsg,
     ]);
     persist("user", p);
-    try {
-      // A page that has never identified itself runs on Puter's throwaway guest
-      // session, which has no credits — and reports that as "no credits
-      // remaining" regardless of what the user's own dashboard says. Test mode is
-      // exempt: it is free and needs no account, so it stays a valid diagnostic.
-      if (puterUser === null && !puterTest) {
-        patch(id, {
-          status: "error",
-          error: "This page isn't signed in to Puter, so it has no credits of its own. Click 'Sign in "
-            + "with Puter' below, pick your account, then resend this prompt.",
-        });
-        return;
-      }
-      const result = await generateImage(p, {
-        provider: model.provider,
-        model: model.id,
-        ratio: { w: ratio.w, h: ratio.h },
-        testMode: puterTest,
-      });
+    const captionFor = () => {
+      void orbitText([{
+        role: "user",
+        content: `Write a short social caption (max 180 characters) for this image. No hashtags unless one fits naturally. No preamble — just the caption.\n\nImage prompt: ${p}`,
+      }]).then((c) => c && patch(id, { caption: c })).catch(() => undefined);
+    };
+    const viaApp = async () => {
+      const result = await openrouterImage(p, { aspectRatio: ratio.label });
       patch(id, { src: result.src, status: "done" });
-      // Caption is a bonus; a failure here must not fail the image.
-      if (!puterTest) {
-        void orbitText([{
-          role: "user",
-          content: `Write a short social caption (max 180 characters) for this image. No hashtags unless one fits naturally. No preamble — just the caption.\n\nImage prompt: ${p}`,
-        }]).then((c) => c && patch(id, { caption: c })).catch(() => undefined);
-      } else {
-        patch(id, { caption: "Test mode — sample image, no credits spent." });
+      captionFor();
+    };
+    try {
+      // Default engine never asks Puter. A spent or guest Puter session was
+      // rejecting every prompt with insufficient_funds before this path ran.
+      if (engine === "puter") {
+        if (puterUser === null && !puterTest) {
+          await viaApp();
+          return;
+        }
+        try {
+          const result = await generateImage(p, {
+            provider: model.provider,
+            model: model.id,
+            ratio: { w: ratio.w, h: ratio.h },
+            testMode: puterTest,
+          });
+          patch(id, { src: result.src, status: "done" });
+          if (puterTest) patch(id, { caption: "Test mode — sample image, no credits spent." });
+          else captionFor();
+          return;
+        } catch (e) {
+          const described = describePuterError(e);
+          const funds = described.includes("insufficient_funds") || described.includes("no credits");
+          if (puterTest || !funds) {
+            patch(id, { status: "error", error: described });
+            return;
+          }
+          await viaApp();
+          return;
+        }
       }
+      await viaApp();
     } catch (e) {
-      patch(id, { status: "error", error: describePuterError(e) });
+      const message = e instanceof Error ? e.message : describePuterError(e);
+      patch(id, { status: "error", error: message || "Image generation failed. Try again." });
     } finally { setBusy(false); }
   };
 
@@ -436,7 +450,7 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
         body: JSON.stringify({ prompt: p, from: address || null }),
       });
       const data = (await res.json().catch(() => ({}))) as
-        | { ok: true; draft: { to: string; amount: string; memo?: string }; source?: string }
+        | { ok: true; draft: { to: string; amount: string; memo?: string }; source?: string; recipientName?: string }
         | { ok: false; question?: string; message?: string };
 
       if (data.ok !== true) {
@@ -452,7 +466,7 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
       if (!local.ok) {
         setMsgs((m) => [...m, {
           kind: "tx", id, to: data.draft.to, amount: data.draft.amount, memo: data.draft.memo ?? "",
-          status: "failed", question: local.error,
+          status: "failed", question: local.error, recipient: data.recipientName,
         }]);
         return;
       }
@@ -463,6 +477,7 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
         to: draft.to, amount: draft.amount, memo: draft.memo ?? "",
         status: REQUIRE_CONFIRM ? "review" : "preparing",
         source: data.source,
+        recipient: data.recipientName,
       }]);
 
       if (REQUIRE_CONFIRM) { setBusy(false); return; }
@@ -514,8 +529,8 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
           {mode === "tx" && (
             <p className="max-w-sm mt-3 text-[11px] leading-relaxed muted flex items-start gap-1.5 text-left">
               <ShieldAlert size={13} className="shrink-0 mt-px" />
-              Orbit reads your sentence and your wallet asks you to sign. The address and amount are
-              taken from your own words, never invented.
+              Orbit reads your sentence and your wallet asks you to sign. A display name is matched to
+              that person's profile. The address and amount are never invented.
               {IS_TESTNET && <> Running on <strong>{ACTIVE_NETWORK.label}</strong>.</>}
             </p>
           )}
@@ -609,12 +624,14 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-lg font-semibold">{t.amount} {cur}</span>
                     <button onClick={() => t.to && copy(t.to, `a${i}`)}
-                      className="font-mono text-[11px] muted hover:text-white transition shrink-0" title="Copy recipient">
-                      {shortTo}
+                      className="text-right shrink-0 hover:text-white transition" title="Copy recipient address">
+                      {t.recipient && <div className="text-[13px] font-medium text-white">{t.recipient}</div>}
+                      <div className="font-mono text-[11px] muted">{shortTo}</div>
                     </button>
                   </div>
                   <div className="text-[11px] muted leading-relaxed">
                     from {shortAddress(address || "—")} · {ACTIVE_NETWORK.label}
+                    {t.recipient && " · display name from your message"}
                     {t.source === "verbatim" && " · taken verbatim from your message"}
                   </div>
                   {t.error && <p className="text-[13px] text-red-300 break-words">{t.error}</p>}
@@ -677,11 +694,25 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
       )}>
         {mode === "post" && (
           <div className="flex flex-wrap gap-1.5 px-3 pt-3">
-            <select value={model.id} onChange={(e) => setModel(PUTER_MODELS.find((m) => m.id === e.target.value) ?? PUTER_MODELS[0])}
-              className="rounded-full bg-white/[.06] border border-white/10 px-2.5 py-1 text-[11px] outline-none">
-              {PUTER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label} — {m.hint}</option>)}
-            </select>
-            {!model.fixedSize && (
+            <div className="flex gap-1">
+              <button onClick={() => setEngine("openrouter")} title="Generate without a Puter account"
+                className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
+                  engine === "openrouter" ? "border-teal-300/60 bg-teal-300/10 text-white" : "border-white/10 muted hover:text-white")}>
+                Included
+              </button>
+              <button onClick={() => setEngine("puter")} title="Bill your own Puter account"
+                className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
+                  engine === "puter" ? "border-teal-300/60 bg-teal-300/10 text-white" : "border-white/10 muted hover:text-white")}>
+                Puter
+              </button>
+            </div>
+            {engine === "puter" && (
+              <select value={model.id} onChange={(e) => setModel(PUTER_MODELS.find((m) => m.id === e.target.value) ?? PUTER_MODELS[0])}
+                className="rounded-full bg-white/[.06] border border-white/10 px-2.5 py-1 text-[11px] outline-none">
+                {PUTER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label} — {m.hint}</option>)}
+              </select>
+            )}
+            {(engine !== "puter" || !model.fixedSize) && (
               <div className="flex gap-1">
                 {PUTER_RATIOS.map((r) => (
                   <button key={r.id} onClick={() => setRatio(r)}
@@ -692,11 +723,14 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
                 ))}
               </div>
             )}
+            {engine === "puter" && (
             <button onClick={() => setPuterTest((v) => !v)} title="Generate a free sample image without spending credits"
               className={cn("rounded-full border px-2.5 py-1 text-[11px] transition",
                 puterTest ? "border-sky-300/50 bg-sky-300/10 text-sky-200" : "border-white/10 muted hover:text-white")}>
               {puterTest ? "Test mode on" : "Test mode"}
             </button>
+            )}
+            {engine === "puter" && (
             <div className="ml-auto flex items-center gap-1">
               {puterUser === undefined ? (
                 <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] muted">checking Puter…</span>
@@ -722,6 +756,7 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
                 </button>
               )}
             </div>
+            )}
           </div>
         )}
 
@@ -768,7 +803,9 @@ export default function OrbitChat({ conversationId = null }: { conversationId?: 
           <span className="ml-auto text-[10px] muted hidden sm:block">
             {mode === "tx"
               ? `limit ${MAX_TRANSFER} ${cur} · approve in wallet`
-              : mode === "post" ? "billed to your Puter account" : "Enter to send · Shift+Enter for a new line"}
+              : mode === "post"
+                ? engine === "puter" ? "billed to your Puter account" : "included · no Puter credits"
+                : "Enter to send · Shift+Enter for a new line"}
           </span>
         </div>
       </div>

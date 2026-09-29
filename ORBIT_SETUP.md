@@ -36,20 +36,15 @@ stop button, copy, new chat, thread persisted to `localStorage`. No extra chat d
 ## 2. Image
 Describe an image, get an image and a caption — both in the thread.
 
-- `lib/orbit/puter.ts` — injects the official CDN script (`https://js.puter.com/v2/`) on first use,
-  then calls `puter.ai.txt2img(prompt, { provider, model, ratio, test_mode })`.
-- **No API key and no server.** Puter is user-pays: the caller needs a signed-in Puter account,
-  and the cost lands on *their* account, not on Echo.
-- **The page signs in explicitly.** Puter.js bills whatever account the browser page is on, and on a
-  first visit that is a throwaway guest session with no credits. Puter reports that as
-  `insufficient_funds` (HTTP 402) — so it looks like the user's account is empty even when their
-  dashboard shows hundreds left. The composer therefore shows who is signed in, with a
-  **Sign in with Puter** button and a **Sign out** button, and refuses to generate until the page is
-  on a real account. `signedInUser()` reports status without prompting; `signInPuter()` opens the
-  account picker (`request_auth`) and must run from a click.
-- **Test mode** (`puter_test`) returns a sample image and spends nothing. It is the only way to tell
-  "our wiring is broken" apart from "this account can't afford it" — if test mode renders an image
-  and real mode says `insufficient_funds`, the integration is fine and the account is the problem.
+- **Included (default).** `app/api/orbit/image/route.ts` generates with `OPENROUTER_API_KEY`.
+  If that key is missing or out of credit, the same route falls back to anonymous FLUX via
+  Pollinations, so a Puter `insufficient_funds` decline never blocks the composer.
+- **Puter (optional).** `lib/orbit/puter.ts` injects `https://js.puter.com/v2/` and calls
+  `puter.ai.txt2img`. That path bills the browser's Puter account. A guest session or a spent
+  free tier returns `insufficient_funds`; the composer then retries on the included route
+  instead of stopping. Sign-in stays available on the Puter engine only.
+- **Test mode** (Puter engine only) returns a sample image and spends nothing. It checks that the
+  Puter script loaded. A real Puter call that returns `insufficient_funds` is retried on the included route.
 - **Model IDs are volatile.** OpenAI retired `gpt-image-1`, `-1-mini` and `-1.5` (shutdown Dec 1,
   2026); use `gpt-image-2` / `gpt-image-2.5-*`. All Together routes are excluded by Puter's data
   policy and reject with `bad_request`. Cloudflare Schnell always renders 1024×1024 and ignores the
@@ -84,7 +79,10 @@ address back as 39 characters and then reported it as invalid.
 
 So both values are extracted from the user's own text with regex:
 
-- **Recipient** — `extractAddresses()`.
+- **Recipient** — `extractAddresses()` when the sentence contains a `0x` address. Otherwise
+  the display name or username must appear in the sentence and match exactly one row in
+  `profiles`. The wallet address comes from that row. Two matches ask you to pick; the model
+  never invents an address.
 - **Amount** — `extractAmounts()`, which strips hex tokens first (otherwise the 40 digits of an
   address look like a number) and folds thousands separators so "1,000" reads as 1000.
 
@@ -98,9 +96,10 @@ longer an in-app review step, so that guarantee is what makes the wallet the rea
 
 ### Other rules
 - Zero or multiple addresses fail closed **without calling the model at all** — instant, free,
-  unambiguous.
-- The parser is instructed to refuse rather than guess: no name→address resolution, no
-  "send my entire balance", one transfer at a time.
+  unambiguous. A display name is resolved the same way: a database lookup, and only when that
+  name is written in the sentence.
+- The parser is instructed to refuse rather than guess: no "send my entire balance", one
+  transfer at a time. It does not turn a name into an address; that lookup is not the model.
 - `MAX_TOKENS` is 800, not 200. These free models emit `reasoning` before `content`, and a
   smaller budget returned empty content that looked like a parse failure.
 - `response_format` is deliberately unused: not every free-tier model supports it and a 400 would

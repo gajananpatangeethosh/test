@@ -260,6 +260,22 @@ export async function getLivePostsByAuthor(walletInput: string, viewer: string |
   return posts.map((p) => toFeedPost(p, author, liked.has(p.id), postCoins.get(p.id)));
 }
 
+/** Display names and usernames for Orbit send-by-name. Addresses stay server-side until matched. */
+export async function listProfileNames(): Promise<{ wallet: string; username: string; displayName: string }[]> {
+  const sb = serviceClient();
+  const result = await sb.from("profiles").select("wallet_address,username,display_name");
+  if (result.error) {
+    if (isMissingTable(result.error)) return [];
+    throw new Error("PROFILE_FAILED");
+  }
+  const rows = (result.data ?? []) as Pick<ProfileRow, "wallet_address" | "username" | "display_name">[];
+  return rows.map((row) => ({
+    wallet: row.wallet_address,
+    username: row.username,
+    displayName: row.display_name,
+  }));
+}
+
 export async function getLiveProfilePage(
   usernameInput: string,
   viewer: string | null,

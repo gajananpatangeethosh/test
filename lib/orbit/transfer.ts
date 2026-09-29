@@ -42,6 +42,97 @@ export function extractAddresses(text: string): string[] {
   return Array.from(new Set(found.map((a) => a.toLowerCase())));
 }
 
+export type NamedProfile = { wallet: string; username: string; displayName: string };
+
+export type NameMatch = NamedProfile & { matched: string };
+
+const NAME_STOP = new Set([
+  "send", "to", "the", "a", "an", "my", "me", "you", "from", "for", "of", "and",
+  "please", "wallet", "amount", "transfer", "tip", "mst", "mstc", "tmstc",
+]);
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function usableName(label: string): boolean {
+  const name = label.trim();
+  if (name.length < 2 || name.length > 80) return false;
+  if (NAME_STOP.has(name.toLowerCase())) return false;
+  if (/^\d+(?:\.\d+)?$/.test(name)) return false;
+  return true;
+}
+
+function nameSpans(prompt: string, label: string): { start: number; end: number }[] {
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(label)}(?![\\p{L}\\p{N}_])`, "giu");
+  const spans: { start: number; end: number }[] = [];
+  for (const match of prompt.matchAll(re)) {
+    const start = match.index ?? 0;
+    spans.push({ start, end: start + match[0].length });
+  }
+  return spans;
+}
+
+/**
+ * Find profiles whose display name or username appears in the user's sentence.
+ *
+ * A longer name wins over a shorter one it contains ("alice smith" beats "alice").
+ * Two profiles that match the same text are both returned so the caller can refuse
+ * instead of guessing. The address always comes from the profile row, never from a model.
+ */
+export function matchProfilesByName(prompt: string, profiles: readonly NamedProfile[]): NameMatch[] {
+  type Span = { start: number; end: number; profile: NamedProfile; label: string };
+  const spans: Span[] = [];
+  for (const profile of profiles) {
+    const labels = [profile.displayName, profile.username];
+    const seen = new Set<string>();
+    for (const raw of labels) {
+      const label = raw.trim();
+      const key = label.toLowerCase();
+      if (!usableName(label) || seen.has(key)) continue;
+      seen.add(key);
+      for (const span of nameSpans(prompt, label)) spans.push({ ...span, profile, label });
+    }
+  }
+
+  const kept = spans.filter((span) => {
+    const length = span.end - span.start;
+    return !spans.some((other) => {
+      if (other === span) return false;
+      const otherLength = other.end - other.start;
+      return otherLength > length && other.start <= span.start && other.end >= span.end;
+    });
+  });
+
+  const byWallet = new Map<string, Span>();
+  for (const span of kept) {
+    const key = span.profile.wallet.toLowerCase();
+    const prev = byWallet.get(key);
+    if (!prev || span.label.length > prev.label.length) byWallet.set(key, span);
+  }
+
+  return [...byWallet.values()].map((span) => ({
+    wallet: span.profile.wallet,
+    username: span.profile.username,
+    displayName: span.profile.displayName.trim() || span.profile.username,
+    matched: span.label,
+  }));
+}
+
+/** Remove resolved names so "user4" is not also read as the amount 4. */
+export function stripMatchedNames(prompt: string, matches: readonly Pick<NameMatch, "displayName" | "username" | "matched">[]): string {
+  let out = prompt;
+  for (const match of matches) {
+    for (const raw of [match.matched, match.displayName, match.username]) {
+      const label = raw.trim();
+      if (!usableName(label)) continue;
+      const re = new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(label)}(?![\\p{L}\\p{N}_])`, "giu");
+      out = out.replace(re, " ");
+    }
+  }
+  return out;
+}
+
 /**
  * Pull every plausible amount out of free text, deterministically.
  *
