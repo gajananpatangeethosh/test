@@ -1222,6 +1222,23 @@ export async function getPostCoinById(coinId: string, viewer: string | null): Pr
   return coin ?? null;
 }
 
+/** Sync post coin reserve / pool / price from the on-chain CreatorCoin pool. */
+export async function syncPostCoinPoolFromChain(coinId: string): Promise<void> {
+  if (!UUID_RE.test(coinId)) return;
+  const sb = serviceClient();
+  const row = await sb.from("post_coins").select("token_address").eq("id", coinId).maybeSingle();
+  if (row.error || !row.data) return;
+  const token = (row.data as { token_address: string | null }).token_address;
+  if (!token) return;
+  const { getCoinPoolOnChain } = await import("@/lib/mst/contracts");
+  const pool = await getCoinPoolOnChain(token);
+  await sb.from("post_coins").update({
+    reserve_mst: pool.reserveMst,
+    total_supply: pool.poolSupply,
+    price_mst: pool.price,
+  }).eq("id", coinId);
+}
+
 export async function tradeLivePostCoin(
   walletInput: string,
   coinId: string,

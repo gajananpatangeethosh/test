@@ -1,7 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getPostCoinByPostId, recordPostCoinMint, recordPostNftMint, tradeLivePostCoin } from "@/lib/db/dal";
+import {
+  getPostCoinById,
+  getPostCoinByPostId,
+  recordPostCoinMint,
+  recordPostNftMint,
+  syncPostCoinPoolFromChain,
+  tradeLivePostCoin,
+} from "@/lib/db/dal";
 import { getSession, requireSession } from "@/lib/db/session";
 
 export async function getPostCoinAction(postId: string) {
@@ -19,9 +26,18 @@ export async function buyPostCoinAction(input: { coinId: string; amountMst: numb
   try {
     const session = await requireSession();
     const result = await tradeLivePostCoin(session.address, input.coinId, "buy", input.amountMst);
+    await syncPostCoinPoolFromChain(input.coinId);
+    const coin = await getPostCoinById(input.coinId, session.address);
     revalidatePath("/home");
     revalidatePath("/explore");
-    return { ok: true as const, result };
+    return {
+      ok: true as const,
+      result: {
+        ...result,
+        price: coin?.price ?? result.price,
+      },
+      coin,
+    };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "BUY_FAILED" };
   }
@@ -51,10 +67,13 @@ export async function recordPostCoinMintAction(input: {
   try {
     const session = await requireSession();
     const coin = await recordPostCoinMint(session.address, input.coinId, input);
+    if (input.status === "minted" && input.tokenAddress) {
+      await syncPostCoinPoolFromChain(input.coinId);
+    }
     revalidatePath("/home");
     revalidatePath("/explore");
     revalidatePath(`/post/${coin?.postId ?? ""}`);
-    return { ok: true as const, coin };
+    return { ok: true as const, coin: await getPostCoinById(input.coinId, session.address) };
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "MINT_STATUS_FAILED" };
   }

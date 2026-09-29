@@ -224,6 +224,22 @@ export function CollectModal() {
           setStage("failed");
           return;
         }
+        if (r.coin && target) {
+          useApp.setState({
+            collectPost: {
+              postId: target.postId,
+              creatorUsername: target.creatorUsername,
+              postCoin: {
+                ...postCoin,
+                price: r.coin.price,
+                change24h: r.coin.change24h,
+                viewerHolding: r.coin.viewerHolding,
+                reserveMst: r.coin.reserveMst,
+                poolSupply: r.coin.totalSupply,
+              },
+            },
+          });
+        }
         setStage("confirmed");
         setTradeTick(tradeTick + 1);
         return;
@@ -231,6 +247,22 @@ export function CollectModal() {
       setStage("preparing");
       const r = await buyPostCoinAction({ coinId: postCoin.id, amountMst: spend });
       if (!r.ok) { setError(tradeError(r.error)); setStage("failed"); return; }
+      if (r.coin && target) {
+        useApp.setState({
+          collectPost: {
+            postId: target.postId,
+            creatorUsername: target.creatorUsername,
+            postCoin: {
+              ...postCoin,
+              price: r.coin.price,
+              change24h: r.coin.change24h,
+              viewerHolding: r.coin.viewerHolding,
+              reserveMst: r.coin.reserveMst,
+              poolSupply: r.coin.totalSupply,
+            },
+          },
+        });
+      }
       setStage("confirmed");
       setTradeTick(tradeTick + 1);
     } catch (e) { setError(tradeError(toMstError(e).message)); setStage("failed"); }

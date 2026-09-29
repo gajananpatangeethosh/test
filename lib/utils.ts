@@ -3,8 +3,14 @@ import { twMerge } from "tailwind-merge";
 export function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 export const fmtNum = (n: number) =>
   n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${n}`;
-export const fmtMst = (n: number) =>
-  n < 0.01 ? n.toFixed(4) : n < 1 ? n.toFixed(3) : n.toFixed(2);
+export const fmtMst = (n: number) => {
+  if (!Number.isFinite(n)) return "0";
+  if (n < 0.0001) return n.toFixed(6);
+  if (n < 0.01) return n.toFixed(5);
+  if (n < 0.1) return n.toFixed(4);
+  if (n < 1) return n.toFixed(3);
+  return n.toFixed(2);
+};
 export const fmtUnits = (n: number) => {
   if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
   if (Number.isInteger(n)) return String(n);

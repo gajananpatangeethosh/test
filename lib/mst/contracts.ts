@@ -60,6 +60,21 @@ export async function getTokenBalance(token: string, owner: string): Promise<str
   return formatUnits(bal, dec);
 }
 
+/** Read live bonding-curve pool state from a deployed CreatorCoin (post or creator token). */
+export async function getCoinPoolOnChain(token: string): Promise<{ reserveMst: number; poolSupply: number; price: number }> {
+  const { ACTIVE_NETWORK } = await import("./config");
+  const c = new Contract(token, CREATOR_COIN_ABI, new JsonRpcProvider(ACTIVE_NETWORK.rpcUrl));
+  const [reserve, poolBal, dec]: [bigint, bigint, number] = await Promise.all([
+    c.reserve() as Promise<bigint>,
+    c.balanceOf(token) as Promise<bigint>,
+    c.decimals() as Promise<number>,
+  ]);
+  const reserveMst = Number(formatUnits(reserve, 18));
+  const poolSupply = Number(formatUnits(poolBal, dec));
+  const price = poolSupply > 0 ? reserveMst / poolSupply : 0;
+  return { reserveMst, poolSupply, price };
+}
+
 // --- Creator coins: Frontend → BridgeKey → CreatorFactory → CreatorCoin
 export async function createCreatorCoin(opts: {
   name: string;
